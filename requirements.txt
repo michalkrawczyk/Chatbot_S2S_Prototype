@@ -1,0 +1,11 @@
+git+https://github.com/openai/whisper.git
+openai==1.65.3
+langchain==0.3.20
+langchain-community==0.3.19
+langchain-core==0.3.41
+langchain-experimental==0.3.4
+langchain-openai==0.3.7
+pyaudio
+pydantic
+#streamlit
+gradio>=3.40.1
