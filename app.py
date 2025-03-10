@@ -667,7 +667,7 @@ transcriber = SpacesTranscriber(DEFAULT_API_KEY)
 
 def create_interface():
     """Create the Gradio interface for Hugging Face Spaces"""
-    with gr.Blocks(title="Voice Recorder & OpenAI Transcriber", theme=gr.themes.Soft()) as app:
+    with gr.Blocks(title="Voice Recorder & OpenAI Transcriber") as app:
         gr.Markdown("# 🎙️ Voice Recorder & OpenAI Transcriber")
         gr.Markdown("Record your voice and transcribe it using OpenAI's Whisper API")
 
@@ -680,7 +680,8 @@ def create_interface():
         # Session state for UI
         current_duration = gr.State(0)
 
-        with gr.Row(equal_height=True, responsive=True) as main_row:
+        # FIXED: Removed 'responsive' parameter which is not supported in this Gradio version
+        with gr.Row(equal_height=True) as main_row:
             with gr.Column(scale=6, min_width=500) as main_column:
                 # Main content area
                 with gr.Group():
@@ -885,9 +886,9 @@ def create_interface():
                 logger.warning("Failed to get language value, defaulting to 'auto'")
                 language_value = "auto"
 
-            # Create progress tracker for long transcriptions
-            with gr.Progress(track_tqdm=True) as progress_tracker:
-                # Call transcriber with all required parameters
+            # Call transcriber with all required parameters
+            try:
+                # FIXED: Removed progress_tracker which might not be supported in this version
                 result = transcriber.handle_recording(
                     audio_array,
                     sample_rate,
@@ -896,8 +897,11 @@ def create_interface():
                     language_value
                 )
 
-            status_msg, audio_path, transcription, estimated_cost, duration = result
-            return status_msg, audio_path, transcription or "", estimated_cost, duration
+                status_msg, audio_path, transcription, estimated_cost, duration = result
+                return status_msg, audio_path, transcription or "", estimated_cost, duration
+            except Exception as e:
+                logger.error(f"Error in handle_recording_wrapper: {str(e)}")
+                return f"Error processing recording: {str(e)}", None, "", "$0.00", 0
 
         audio_recorder.stop_recording(
             fn=handle_recording_wrapper,
@@ -918,9 +922,9 @@ def create_interface():
             if not path:
                 return "No recording available to transcribe"
 
-            with gr.Progress(track_tqdm=True) as progress_tracker:
-                transcription = transcriber.transcribe_audio(path, lang,
-                                                             api_key) if path else "No recording available to transcribe"
+            # FIXED: Removed progress_tracker
+            transcription = transcriber.transcribe_audio(path, lang,
+                                                         api_key) if path else "No recording available to transcribe"
 
             return transcription
 
@@ -940,8 +944,8 @@ def create_interface():
                 return "No file uploaded", ""
 
             # First process the uploaded file
-            with gr.Progress(track_tqdm=True) as progress_tracker:
-                progress_tracker.tqdm(0, desc="Processing audio file")
+            try:
+                # FIXED: Removed progress_tracker
                 processed_path, status_msg, duration = transcriber.audio_processor.process_uploaded_file(audio_path)
 
                 if not processed_path:
@@ -950,14 +954,14 @@ def create_interface():
                 # Set for cost calculation
                 estimated_cost = transcriber.openai_client.get_estimated_cost(duration)
 
-                # Update progress
-                progress_tracker.tqdm(0.5, desc="Transcribing audio")
-
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
 
-            status_with_cost = f"{status_msg} (Estimated cost: {estimated_cost})"
-            return status_with_cost, transcription or ""
+                status_with_cost = f"{status_msg} (Estimated cost: {estimated_cost})"
+                return status_with_cost, transcription or ""
+            except Exception as e:
+                logger.error(f"Error processing uploaded audio: {str(e)}")
+                return f"Error processing file: {str(e)}", ""
 
         upload_transcribe_btn.click(
             fn=process_uploaded_audio,
