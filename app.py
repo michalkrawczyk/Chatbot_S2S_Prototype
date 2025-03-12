@@ -12,6 +12,8 @@ from pathlib import Path
 import subprocess
 import json
 
+from agents import initialize_agent, agent_executor, run_agent_on_text
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +23,12 @@ logger = logging.getLogger('voice_transcriber')
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+SUPPORT_LANGUAGES = [
+            "auto", "en", "es", "fr", "de", "it", "pt", "nl",
+            "ru", "zh", "ja", "ar", "hi", "ko"
+        ]
+
+
 
 
 class SpacesConfig:
@@ -31,10 +39,7 @@ class SpacesConfig:
         self.temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
         self.max_recording_length_seconds = 300  # 5 minutes to avoid timeouts
         self.max_history_items = 5  # Limit history to save memory
-        self.supported_languages = [
-            "auto", "en", "es", "fr", "de", "it", "pt", "nl",
-            "ru", "zh", "ja", "ar", "hi", "ko"
-        ]
+        self.supported_languages = SUPPORT_LANGUAGES
         self.supported_formats = ['.wav', '.mp3', '.m4a', '.flac']
         self.initialize()
 
@@ -190,10 +195,7 @@ class OpenAIClient:
         Returns:
             bool: True if language is supported, False otherwise
         """
-        supported_languages = [
-            "en", "es", "fr", "de", "it", "pt", "nl",
-            "ru", "zh", "ja", "ar", "hi", "ko"
-        ]
+        supported_languages = SUPPORT_LANGUAGES
         return language in supported_languages
 
     def get_estimated_cost(self, duration_seconds):
@@ -427,6 +429,7 @@ class SpacesTranscriber:
         self.audio_processor = AudioProcessor(self.config)
         self.session_history = []
         self.transcription_cache = {}  # Cache for transcriptions
+        self.agent_memory = []  # Memory for the agent
 
     def connect_to_openai(self, api_key):
         """
@@ -660,6 +663,41 @@ class SpacesTranscriber:
 
         return results
 
+    def initialize_agent(self, api_key):
+        """Initialize the agent with the OpenAI API key."""
+        return initialize_agent(api_key)
+
+    def analyze_transcription(self, transcription):
+        """Analyze the transcription using the AI agent."""
+        global agent_executor
+        if not agent_executor:
+            return "Agent not initialized. Please provide a valid API key."
+
+        return run_agent_on_text(transcription, self.agent_memory)
+
+    def clear_agent_memory(self):
+        """Clear the agent's memory."""
+        self.agent_memory = []
+        return "Agent memory cleared."
+
+    def add_to_agent_memory(self, transcription, analysis):
+        """Add the current context to agent memory."""
+        if not hasattr(self, 'agent_memory'):
+            self.agent_memory = []
+
+        memory_item = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "transcription": transcription,
+            "analysis": analysis
+        }
+
+        self.agent_memory.append(memory_item)
+
+        # Limit memory size
+        max_memory_items = 10
+        if len(self.agent_memory) > max_memory_items:
+            self.agent_memory = self.agent_memory[-max_memory_items:]
+
 
 # Create the transcriber instance with the default API key
 transcriber = SpacesTranscriber(DEFAULT_API_KEY)
@@ -770,6 +808,39 @@ def create_interface():
                         upload_transcribe_btn = gr.Button("Transcribe Uploaded Audio", variant="secondary")
                         upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
 
+                    with gr.TabItem("AI Analysis"):
+                        gr.Markdown("### AI Agent Analysis")
+                        gr.Markdown("This tab uses an AI agent to analyze your transcribed text")
+
+                        with gr.Row():
+                            agent_model_selector = gr.Dropdown(
+                                choices=["gpt-3.5-turbo", "gpt-4-turbo"],
+                                value="gpt-3.5-turbo",
+                                label="Agent Model",
+                                info="Select the model for the AI agent"
+                            )
+                            initialize_agent_btn = gr.Button("Initialize Agent", variant="primary")
+                            agent_status = gr.Markdown("Agent Status: Not initialized")
+
+                        analyze_btn = gr.Button("Analyze Transcription", variant="secondary")
+
+                        with gr.Accordion("Agent Memory", open=True):
+                            memory_display = gr.Markdown("No memory stored.")
+                            clear_memory_btn = gr.Button("Clear Memory", variant="secondary")
+
+                        with gr.Accordion("Agent Tools", open=False):
+                            gr.Markdown("Tools will be added in future updates.")
+                            # Placeholder for future tool configuration
+
+                        gr.Markdown("### Analysis Results")
+                        analysis_output = gr.Textbox(
+                            label="Analysis",
+                            placeholder="Analysis will appear here...",
+                            lines=10,
+                            max_lines=30,
+                            interactive=True
+                        )
+
                 # Transcription output
                 gr.Markdown("### Transcription")
                 transcription_output = gr.Textbox(
@@ -806,6 +877,7 @@ def create_interface():
                     2. The recording will be automatically transcribed if enabled
                     3. Or click "Transcribe Audio" to manually transcribe
                     4. Copy or download the transcription as needed
+                    5. Use the AI Analysis tab to analyze your transcription
 
                     ### API Key:
 
@@ -832,6 +904,7 @@ def create_interface():
                     This application uses:
                     - Gradio for the web interface
                     - OpenAI's Whisper API for transcription
+                    - LangGraph for AI agent analysis
 
                     Created for demonstration and educational purposes.
 
@@ -851,8 +924,27 @@ def create_interface():
             return "No recording yet"
 
         # Connect to OpenAI
+        # REPLACE THIS FUNCTION with the one below
+        # connect_btn.click(
+        #     fn=transcriber.connect_to_openai,
+        #     inputs=[api_key_input],
+        #     outputs=[api_status]
+        # )
+
+        # Modify the connect button handler
+        def connect_and_init(api_key):
+            # Connect to OpenAI
+            message, success, color = transcriber.openai_client.connect(api_key)
+            status_html = f"<span style='color: {color}'>{message}</span>"
+
+            # Initialize agent if connection successful
+            if success:
+                transcriber.initialize_agent(api_key)
+
+            return status_html
+
         connect_btn.click(
-            fn=transcriber.connect_to_openai,
+            fn=connect_and_init,
             inputs=[api_key_input],
             outputs=[api_status]
         )
@@ -1059,6 +1151,65 @@ def create_interface():
             }
             """
         )
+
+        # Initialize agent
+        def init_agent(api_key):
+            success = transcriber.initialize_agent(api_key)
+            if success:
+                return "Agent Status: ✓ Initialized"
+            else:
+                return "Agent Status: ❌ Initialization failed (API key required)"
+
+        initialize_agent_btn.click(
+            fn=init_agent,
+            inputs=[api_key_input],
+            outputs=[agent_status]
+        )
+
+        # Analyze transcription
+        def analyze_transcription(text):
+            if not text:
+                return "No transcription to analyze"
+
+            analysis = transcriber.analyze_transcription(text)
+            if analysis:
+                # Add to memory
+                transcriber.add_to_agent_memory(text, analysis)
+
+                # Update memory display
+                update_memory_display()
+
+                return analysis
+            return "Analysis failed"
+
+        analyze_btn.click(
+            fn=analyze_transcription,
+            inputs=[transcription_output],
+            outputs=[analysis_output]
+        )
+
+        # Clear agent memory
+        def clear_memory():
+            result = transcriber.clear_agent_memory()
+            update_memory_display()
+            return result
+
+        clear_memory_btn.click(
+            fn=clear_memory,
+            inputs=[],
+            outputs=[memory_display]
+        )
+
+        # Update memory display
+        def update_memory_display():
+            if not hasattr(transcriber, 'agent_memory') or not transcriber.agent_memory:
+                return "No memory stored."
+
+            memory_text = "### Agent Memory:\n\n"
+            for i, item in enumerate(reversed(transcriber.agent_memory), 1):
+                memory_text += f"{i}. **{item['timestamp']}** - {item['transcription'][:50]}...\n\n"
+
+            return memory_text
 
     return app
 
