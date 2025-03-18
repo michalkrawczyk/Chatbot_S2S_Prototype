@@ -571,7 +571,7 @@ def create_interface():
             # Initialize agent with selected model
             success = transcriber.initialize_agent_ui(api_key, model)
             if success:
-                logger.info("Agent executor:", AGENT.get_agent_executor)
+                logger.info("Agent executor:", AGENT.get_model_name, AGENT.get_agent_executor is not None)
                 return f"Agent Status: ✓ Initialized with {model} model"
             else:
                 return "Agent Status: ❌ Initialization failed"

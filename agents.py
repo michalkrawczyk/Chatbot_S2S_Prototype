@@ -71,6 +71,7 @@ def create_agent(model_name="o3-mini"):
 
 class AgentLLM:
     _agent_executor = None
+    _model_name = ""
 
     def initialize_agent(self, api_key, model_name="o3-mini"):
         """Initialize the agent with the provided API key."""
@@ -78,6 +79,7 @@ class AgentLLM:
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
             self._agent_executor = create_agent(model_name=model_name)
+            self._model_name = model_name
             return True
         return False
 
@@ -116,3 +118,7 @@ class AgentLLM:
     @property
     def get_agent_executor(self):
         return self._agent_executor
+
+    @property
+    def get_model_name(self):
+        return self._model_name
