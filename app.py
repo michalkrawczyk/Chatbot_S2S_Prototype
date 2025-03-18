@@ -8,7 +8,7 @@ from datetime import datetime
 from openai import OpenAI
 from pathlib import Path
 
-from agents import initialize_agent, agent_executor, run_agent_on_text
+from agents import AgentLLM
 from utils import logger
 from audio import AudioProcessor
 
@@ -19,6 +19,7 @@ SUPPORT_LANGUAGES = [
     "ru", "zh", "ja", "ar", "hi", "ko", "pl"
 ]
 
+AGENT = AgentLLM()
 
 class SpacesConfig:
     """Configuration tailored for Hugging Face Spaces"""
@@ -436,7 +437,7 @@ class SpacesTranscriber:
             self.current_model = model_name
             logger.info(f"Setting agent model to: {model_name}")
 
-        return initialize_agent(api_key, model_name=self.current_model)
+        return AGENT.initialize_agent(api_key, model_name=self.current_model)
 
     def analyze_transcription(self, transcription, source_file=None):
         """
@@ -449,7 +450,7 @@ class SpacesTranscriber:
         Returns:
             tuple: (analysis_result, thinking_process)
         """
-        if not agent_executor:
+        if not AGENT.get_agent_executor:
             return "Agent not initialized. Please provide a valid API key.", ""
 
         context = transcription
@@ -462,7 +463,7 @@ class SpacesTranscriber:
                 logger.error(f"Error reading source file: {e}")
                 context = f"Transcription: {transcription}\n\nSource File: [Failed to read file: {str(e)}]"
 
-        result, thinking = run_agent_on_text(context, self.agent_memory, return_thinking=True)
+        result, thinking = AGENT.run_agent_on_text(context, self.agent_memory, return_thinking=True)
         self.thinking_process = thinking
         return result, thinking
 

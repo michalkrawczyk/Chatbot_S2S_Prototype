@@ -67,46 +67,52 @@ def create_agent(model_name="o3-mini"):
 
 
 # Create the agent - will be initialized when needed
-agent_executor = None
+# agent_executor = None
+
+class AgentLLM:
+    _agent_executor = None
+
+    def initialize_agent(self, api_key, model_name="o3-mini"):
+        """Initialize the agent with the provided API key."""
+
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+            self._agent_executor = create_agent(model_name=model_name)
+            return True
+        return False
 
 
-def initialize_agent(api_key, model_name="o3-mini"):
-    """Initialize the agent with the provided API key."""
-    global agent_executor
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-        agent_executor = create_agent(model_name=model_name)
-        return True
-    return False
+    def run_agent_on_text(self, text, memory, tools=None, return_thinking=False):
+        """Run the agent on the provided text."""
+        if not self._agent_executor:
+            return "Agent not initialized. Please provide a valid OpenAI API key."
+
+        if not text:
+            return "No text provided for analysis."
+
+        initial_state = AgentState(
+            messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
+            tools=tools or {},
+            memory=memory or []
+        )
+        thinking_process_message = ""
+
+        try:
+            result = self._agent_executor.invoke(initial_state)
+            # Extract the last AI message
+            if return_thinking:
+               # TODO
+                thinking_process_message = "Not implemented yet"
 
 
-def run_agent_on_text(text, memory, tools=None, return_thinking=False):
-    """Run the agent on the provided text."""
-    if not agent_executor:
-        return "Agent not initialized. Please provide a valid OpenAI API key."
+            for message in reversed(result["messages"]):
+                if isinstance(message, AIMessage):
+                    return message.content, thinking_process_message
 
-    if not text:
-        return "No text provided for analysis."
+            return "No response generated."
+        except Exception as e:
+            return f"Error running agent: {str(e)}"
 
-    initial_state = AgentState(
-        messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
-        tools=tools or {},
-        memory=memory or []
-    )
-    thinking_process_message = ""
-
-    try:
-        result = agent_executor.invoke(initial_state)
-        # Extract the last AI message
-        if return_thinking:
-           # TODO
-            thinking_process_message = "Not implemented yet"
-
-
-        for message in reversed(result["messages"]):
-            if isinstance(message, AIMessage):
-                return message.content, thinking_process_message
-
-        return "No response generated."
-    except Exception as e:
-        return f"Error running agent: {str(e)}"
+    @property
+    def get_agent_executor(self):
+        return self._agent_executor
