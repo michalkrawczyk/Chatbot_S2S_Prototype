@@ -780,13 +780,15 @@ def create_interface():
 
             try:
                 # Process the uploaded file
+                logger.info(f"Processing uploaded audio: {audio_path}")
                 processed_path, status_msg, duration = transcriber.audio_processor.process_uploaded_file(audio_path)
-
                 if not processed_path:
                     return status_msg, "", "", ""
 
+                logger.info(f"Transcrbing audio file: {processed_path}, duration: {duration:.2f}s")
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
+
 
                 # Analyze
                 analysis_result = ""
@@ -796,6 +798,7 @@ def create_interface():
                     # Add to agent memory
                     transcriber.add_to_agent_memory(transcription, analysis_result)
 
+                logger.info(f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
                 return status_msg, transcription or "", analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
