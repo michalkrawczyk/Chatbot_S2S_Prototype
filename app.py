@@ -2,14 +2,11 @@ import gradio as gr
 
 import os
 import time
-
 import tempfile
-
 
 from datetime import datetime
 from openai import OpenAI
 from pathlib import Path
-# import json
 
 from agents import initialize_agent, agent_executor, run_agent_on_text
 from utils import logger
@@ -18,11 +15,9 @@ from audio import AudioProcessor
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 SUPPORT_LANGUAGES = [
-            "auto", "en", "es", "fr", "de", "it", "pt", "nl",
-            "ru", "zh", "ja", "ar", "hi", "ko", "pl"
-        ]
-
-
+    "auto", "en", "es", "fr", "de", "it", "pt", "nl",
+    "ru", "zh", "ja", "ar", "hi", "ko", "pl"
+]
 
 
 class SpacesConfig:
@@ -208,9 +203,6 @@ class OpenAIClient:
         return f"${cost:.4f}"
 
 
-
-
-
 class SpacesTranscriber:
     """Main application class for Hugging Face Spaces"""
 
@@ -221,6 +213,7 @@ class SpacesTranscriber:
         self.session_history = []
         self.transcription_cache = {}  # Cache for transcriptions
         self.agent_memory = []  # Memory for the agent
+        self.thinking_process = ""  # For storing agent's thinking process
 
     def connect_to_openai(self, api_key):
         """
@@ -458,13 +451,33 @@ class SpacesTranscriber:
         """Initialize the agent with the OpenAI API key."""
         return initialize_agent(api_key)
 
-    def analyze_transcription(self, transcription):
-        """Analyze the transcription using the AI agent."""
-        # global agent_executor
-        if not agent_executor:
-            return "Agent not initialized. Please provide a valid API key."
+    def analyze_transcription(self, transcription, source_file=None):
+        """
+        Analyze the transcription using the AI agent.
 
-        return run_agent_on_text(transcription, self.agent_memory)
+        Args:
+            transcription (str): The text to analyze
+            source_file (str, optional): Source file for additional context
+
+        Returns:
+            tuple: (analysis_result, thinking_process)
+        """
+        if not agent_executor:
+            return "Agent not initialized. Please provide a valid API key.", ""
+
+        context = transcription
+        if source_file:
+            try:
+                with open(source_file, 'r') as f:
+                    file_content = f.read()
+                context = f"Transcription: {transcription}\n\nSource File Content: {file_content}"
+            except Exception as e:
+                logger.error(f"Error reading source file: {e}")
+                context = f"Transcription: {transcription}\n\nSource File: [Failed to read file: {str(e)}]"
+
+        result, thinking = run_agent_on_text(context, self.agent_memory, return_thinking=True)
+        self.thinking_process = thinking
+        return result, thinking
 
     def clear_agent_memory(self):
         """Clear the agent's memory."""
@@ -496,9 +509,9 @@ transcriber = SpacesTranscriber(DEFAULT_API_KEY)
 
 def create_interface():
     """Create the Gradio interface for Hugging Face Spaces"""
-    with gr.Blocks(title="Voice Recorder & OpenAI Transcriber") as app:
-        gr.Markdown("# 🎙️ Voice Recorder & OpenAI Transcriber")
-        gr.Markdown("Record your voice and transcribe it using OpenAI's Whisper API")
+    with gr.Blocks(title="Voice Recorder & AI Analysis") as app:
+        gr.Markdown("# 🎙️ Voice Recorder & AI Analysis")
+        gr.Markdown("Record your voice, transcribe it, and analyze it with AI")
 
         # Connection status indicator
         if DEFAULT_API_KEY:
@@ -508,200 +521,153 @@ def create_interface():
 
         # Session state for UI
         current_duration = gr.State(0)
+        source_file_path = gr.State(None)
 
-        # FIXED: Removed 'responsive' parameter which is not supported in this Gradio version
-        with gr.Row(equal_height=True) as main_row:
-            with gr.Column(scale=6, min_width=500) as main_column:
-                # Main content area
+        with gr.Row() as main_row:
+            # API Key configuration
+            with gr.Column(scale=1):
                 with gr.Group():
                     # OpenAI API Key input and connection
-                    with gr.Row():
-                        api_key_input = gr.Textbox(
-                            label="OpenAI API Key (optional if configured in Spaces)",
-                            placeholder="Enter your OpenAI API key here",
-                            type="password",
-                            container=True,
-                            scale=4,
-                            value=""
-                        )
-                        connect_btn = gr.Button("Connect to OpenAI", variant="primary", scale=1)
-
+                    api_key_input = gr.Textbox(
+                        label="OpenAI API Key",
+                        placeholder="Enter your OpenAI API key here",
+                        type="password",
+                        container=True,
+                        value=""
+                    )
+                    connect_btn = gr.Button("Connect to OpenAI", variant="primary")
                     api_status = gr.Markdown("Status: Not connected with custom key")
 
-                with gr.Tabs():
+                    # Agent model selector
+                    agent_model_selector = gr.Dropdown(
+                        choices=["o3-mini", "gpt-4-turbo", "gpt-4o"],
+                        value="o3-mini",
+                        label="Agent Model",
+                        info="Select the model for the AI agent"
+                    )
+                    initialize_agent_btn = gr.Button("Initialize Agent", variant="primary")
+                    agent_status = gr.Markdown("Agent Status: Not initialized")
+
+                # Language selection
+                language_selector = gr.Dropdown(
+                    choices=transcriber.config.supported_languages,
+                    value="auto",
+                    label="Language",
+                    info="Select language or 'auto' for automatic detection"
+                )
+
+                # Session history
+                with gr.Accordion("Previous Sessions", open=False):
+                    history_display = gr.Markdown("No previous recordings in this session.")
+
+                # Agent memory
+                with gr.Accordion("Agent Memory", open=False):
+                    memory_display = gr.Markdown("No memory stored.")
+                    clear_memory_btn = gr.Button("Clear Memory", variant="secondary")
+
+            # Main content area
+            with gr.Column(scale=3):
+                with gr.Tabs() as input_tabs:
+                    # Tab 1: Record Audio
                     with gr.TabItem("Record Audio"):
-                        # Audio recording component
-                        with gr.Row():
-                            audio_recorder = gr.Audio(
-                                sources=["microphone"],
-                                type="numpy",
-                                label="Record Audio",
-                                elem_id="audio_recorder",
-                                scale=3
-                            )
-
-                            with gr.Column(scale=1):
-                                auto_transcribe = gr.Checkbox(
-                                    label="Auto-transcribe",
-                                    value=True,
-                                    info="Automatically transcribe after recording"
-                                )
-
-                                language_selector = gr.Dropdown(
-                                    choices=transcriber.config.supported_languages,
-                                    value="auto",
-                                    label="Language",
-                                    info="Select language or 'auto' for automatic detection"
-                                )
-
-                        # Status message and recording info
-                        with gr.Row():
-                            status_msg = gr.Textbox(
-                                label="Status",
-                                value="Ready to record",
-                                interactive=False,
-                                scale=3
-                            )
-                            cost_display = gr.Textbox(
-                                label="Estimated Cost",
-                                value="$0.00",
-                                interactive=False,
-                                scale=1
-                            )
-
-                        # Recorded audio playback
+                        audio_recorder = gr.Audio(
+                            sources=["microphone"],
+                            type="numpy",
+                            label="Record Audio",
+                            elem_id="audio_recorder"
+                        )
                         audio_playback = gr.Audio(
                             label="Recorded Audio",
                             type="filepath",
                             interactive=False,
                             elem_id="audio_playback"
                         )
+                        auto_transcribe = gr.Checkbox(
+                            label="Auto-transcribe & Analyze",
+                            value=True,
+                            info="Automatically transcribe and analyze after recording"
+                        )
 
-                        # Manual transcribe button
-                        transcribe_btn = gr.Button("Transcribe Audio", variant="secondary")
-
+                    # Tab 2: Upload Audio
                     with gr.TabItem("Upload Audio"):
-                        # Upload audio file option
                         audio_upload = gr.Audio(
                             label="Upload Audio File",
                             type="filepath",
                             sources=["upload"],
                             elem_id="audio_upload"
                         )
-
-                        upload_language = gr.Dropdown(
-                            choices=transcriber.config.supported_languages,
-                            value="auto",
-                            label="Language",
-                            info="Select language or 'auto' for automatic detection"
-                        )
-
-                        upload_transcribe_btn = gr.Button("Transcribe Uploaded Audio", variant="secondary")
                         upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
+                        upload_transcribe_btn = gr.Button("Transcribe & Analyze Uploaded Audio", variant="secondary")
 
-                    with gr.TabItem("AI Analysis"):
-                        gr.Markdown("### AI Agent Analysis")
-                        gr.Markdown("This tab uses an AI agent to analyze your transcribed text")
-
-                        with gr.Row():
-                            agent_model_selector = gr.Dropdown(
-                                choices=["o3-mini", "gpt-4-turbo", "gpt-4o", ],
-                                value="o3-mini",
-                                label="Agent Model",
-                                info="Select the model for the AI agent"
-                            )
-                            initialize_agent_btn = gr.Button("Initialize Agent", variant="primary")
-                            agent_status = gr.Markdown("Agent Status: Not initialized")
-
-                        analyze_btn = gr.Button("Analyze Transcription", variant="secondary")
-
-                        with gr.Accordion("Agent Memory", open=True):
-                            memory_display = gr.Markdown("No memory stored.")
-                            clear_memory_btn = gr.Button("Clear Memory", variant="secondary")
-
-                        with gr.Accordion("Agent Tools", open=False):
-                            gr.Markdown("Tools will be added in future updates.")
-                            # Placeholder for future tool configuration
-
-                        gr.Markdown("### Analysis Results")
-                        analysis_output = gr.Textbox(
-                            label="Analysis",
-                            placeholder="Analysis will appear here...",
+                    # Tab 3: Text Input
+                    with gr.TabItem("Text Input"):
+                        text_input = gr.Textbox(
+                            label="Enter Text for Analysis",
+                            placeholder="Type or paste text here for AI analysis...",
                             lines=10,
-                            max_lines=30,
-                            interactive=True
+                            max_lines=30
                         )
+                        source_file_upload = gr.File(
+                            label="Upload Source File (Optional)",
+                            file_types=[".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".csv"]
+                        )
+                        analyze_text_btn = gr.Button("Analyze Text", variant="primary")
+
+                # Status and cost info
+                with gr.Row():
+                    status_msg = gr.Textbox(
+                        label="Status",
+                        value="Ready to record or input text",
+                        interactive=False,
+                        scale=3
+                    )
+                    cost_display = gr.Textbox(
+                        label="Estimated Cost",
+                        value="$0.00",
+                        interactive=False,
+                        scale=1
+                    )
 
                 # Transcription output
                 gr.Markdown("### Transcription")
                 transcription_output = gr.Textbox(
-                    label="Transcription Result",
+                    label="Transcribed Text",
                     placeholder="Transcription will appear here...",
-                    lines=10,
-                    max_lines=30,
-                    interactive=True,
-                    elem_id="transcription_output"
+                    lines=6,
+                    max_lines=10,
+                    interactive=True
                 )
 
-                # Copy and download buttons
+                # Copy and download buttons for transcription
                 with gr.Row():
-                    copy_btn = gr.Button("Copy to Clipboard", elem_id="copy_btn")
+                    copy_btn = gr.Button("Copy Transcription", elem_id="copy_btn")
                     download_btn = gr.Button("Download Transcript", elem_id="download_btn")
+                    analyze_btn = gr.Button("Analyze Transcription", variant="primary")
 
-            with gr.Column(scale=3, min_width=300) as side_column:
-                # Sidebar-like content
-                with gr.Group():
-                    gr.Markdown("### Recording Information")
+            # Output area for analysis
+            with gr.Column(scale=2):
+                # Analysis output
+                gr.Markdown("### AI Analysis")
+                analysis_output = gr.Textbox(
+                    label="Analysis Result",
+                    placeholder="Analysis will appear here...",
+                    lines=15,
+                    max_lines=25,
+                    interactive=True
+                )
 
-                    # Display recording stats
-                    recording_info = gr.Markdown("No recording yet")
+                # Thinking process display
+                gr.Markdown("### Agent Thinking Process")
+                thinking_display = gr.Textbox(
+                    label="Agent's Thinking Process",
+                    placeholder="The agent's reasoning will appear here...",
+                    lines=15,
+                    max_lines=25,
+                    interactive=True
+                )
 
-                    # Session history
-                    gr.Markdown("### Previous Recordings")
-                    history_display = gr.Markdown("No previous recordings in this session.")
-
-                with gr.Accordion("Usage Information", open=False):
-                    gr.Markdown("""
-                    ### How to use this app:
-
-                    1. Record your voice using the microphone or upload an audio file
-                    2. The recording will be automatically transcribed if enabled
-                    3. Or click "Transcribe Audio" to manually transcribe
-                    4. Copy or download the transcription as needed
-                    5. Use the AI Analysis tab to analyze your transcription
-
-                    ### API Key:
-
-                    - If this Space has been configured with an API key, you don't need to provide one
-                    - Otherwise, enter your OpenAI API key in the field at the top
-
-                    ### Pricing Information:
-
-                    OpenAI's Whisper API costs approximately $0.006 per minute of audio.
-                    The cost estimate is displayed after recording.
-
-                    ### Limitations:
-
-                    - Maximum recording length: 5 minutes
-                    - Recordings are temporary and not permanently stored
-                    - History is limited to the current session
-                    """)
-
-                # About this app
-                with gr.Accordion("About", open=False):
-                    gr.Markdown("""
-                    ### About this App
-
-                    This application uses:
-                    - Gradio for the web interface
-                    - OpenAI's Whisper API for transcription
-                    - LangGraph for AI agent analysis
-
-                    Created for demonstration and educational purposes.
-
-                    _The app is running on Hugging Face Spaces, which provides temporary storage. 
-                    Your recordings and transcriptions are not permanently stored._
-                    """)
+                # Copy analysis button
+                copy_analysis_btn = gr.Button("Copy Analysis", elem_id="copy_analysis_btn")
 
         # Event handlers
         def update_recording_info(duration):
@@ -714,48 +680,45 @@ def create_interface():
                     return f"**Last Recording:**\n- Duration: {duration_str}\n- Size: {size_kb:.1f} KB\n- File: {filename}"
             return "No recording yet"
 
-        # Connect to OpenAI
-        # REPLACE THIS FUNCTION with the one below
-        # connect_btn.click(
-        #     fn=transcriber.connect_to_openai,
-        #     inputs=[api_key_input],
-        #     outputs=[api_status]
-        # )
-
-        # Modify the connect button handler
-        def connect_and_init(api_key):
+        # Connect to OpenAI and initialize agent
+        def connect_and_init(api_key, model_name):
             # Connect to OpenAI
             message, success, color = transcriber.openai_client.connect(api_key)
             status_html = f"<span style='color: {color}'>{message}</span>"
 
             # Initialize agent if connection successful
+            agent_status_msg = "Agent Status: Not initialized"
             if success:
-                transcriber.initialize_agent(api_key)
+                success = transcriber.initialize_agent(api_key)
+                if success:
+                    agent_status_msg = f"Agent Status: ✓ Initialized with {model_name} model"
+                else:
+                    agent_status_msg = "Agent Status: ❌ Initialization failed"
 
-            return status_html
+            return status_html, agent_status_msg
 
         connect_btn.click(
             fn=connect_and_init,
-            inputs=[api_key_input],
-            outputs=[api_status]
+            inputs=[api_key_input, agent_model_selector],
+            outputs=[api_status, agent_status]
         )
 
-        # Process recording - IMPROVED: Robust handling of audio data and parameters
-        def handle_recording_wrapper(audio_data):
+        # Process recording with auto transcription and analysis
+        def handle_recording_with_analysis(audio_data):
             # Validate audio data format
             if audio_data is None or not isinstance(audio_data, tuple) or len(audio_data) != 2:
                 logger.warning(f"Invalid audio data format: {type(audio_data)}")
-                return "Invalid or no audio recorded", None, "", "$0.00", 0
+                return "Invalid or no audio recorded", None, "", "$0.00", 0, "", ""
 
             # Extract audio data and sample rate
             audio_array, sample_rate = audio_data
 
             # Get parameters from UI components safely
             try:
-                auto_transcribe_value = auto_transcribe.value
+                auto_analyze_value = auto_transcribe.value
             except:
                 logger.warning("Failed to get auto_transcribe value, defaulting to True")
-                auto_transcribe_value = True
+                auto_analyze_value = True
 
             try:
                 api_key_value = api_key_input.value
@@ -769,70 +732,65 @@ def create_interface():
                 logger.warning("Failed to get language value, defaulting to 'auto'")
                 language_value = "auto"
 
-            # Call transcriber with all required parameters
+            # Call transcriber
             try:
-                # FIXED: Removed progress_tracker which might not be supported in this version
                 result = transcriber.handle_recording(
                     audio_array,
                     sample_rate,
-                    auto_transcribe_value,
+                    True,  # Always transcribe
                     api_key_value,
                     language_value
                 )
 
                 status_msg, audio_path, transcription, estimated_cost, duration = result
-                return status_msg, audio_path, transcription or "", estimated_cost, duration
+
+                # Default values in case analysis fails
+                analysis_result = ""
+                thinking_process = ""
+
+                # Automatically analyze if enabled
+                if auto_analyze_value and transcription and not transcription.startswith("Error"):
+                    try:
+                        analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
+                        # Add to agent memory
+                        transcriber.add_to_agent_memory(transcription, analysis_result)
+                        status_msg += " and analyzed"
+                    except Exception as e:
+                        logger.error(f"Error analyzing transcription: {e}")
+                        analysis_result = f"Analysis error: {str(e)}"
+                        thinking_process = ""
+
+                return status_msg, audio_path, transcription or "", estimated_cost, duration, analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error in handle_recording_wrapper: {str(e)}")
-                return f"Error processing recording: {str(e)}", None, "", "$0.00", 0
+                return f"Error processing recording: {str(e)}", None, "", "$0.00", 0, "", ""
 
         audio_recorder.stop_recording(
-            fn=handle_recording_wrapper,
-            inputs=[audio_recorder],  # This provides the audio data
-            outputs=[status_msg, audio_playback, transcription_output, cost_display, current_duration]
+            fn=handle_recording_with_analysis,
+            inputs=[audio_recorder],
+            outputs=[status_msg, audio_playback, transcription_output, cost_display, current_duration, analysis_output,
+                     thinking_display]
         ).then(
             fn=update_recording_info,
             inputs=[current_duration],
-            outputs=[recording_info]
+            outputs=[status_msg]
         ).then(
             fn=transcriber.get_session_history,
             inputs=[],
             outputs=[history_display]
         )
 
-        # Manual transcribe for recorded audio
-        def manual_transcribe(path, lang, api_key):
-            if not path:
-                return "No recording available to transcribe"
-
-            # FIXED: Removed progress_tracker
-            transcription = transcriber.transcribe_audio(path, lang,
-                                                         api_key) if path else "No recording available to transcribe"
-
-            return transcription
-
-        transcribe_btn.click(
-            fn=manual_transcribe,
-            inputs=[audio_playback, language_selector, api_key_input],
-            outputs=[transcription_output]
-        ).then(
-            fn=transcriber.get_session_history,
-            inputs=[],
-            outputs=[history_display]
-        )
-
-        # Transcribe uploaded audio - IMPROVED: Better error handling for different file formats
-        def process_uploaded_audio(audio_path, language, api_key):
+        # Process uploaded audio with automatic analysis
+        def process_uploaded_audio_with_analysis(audio_path, language, api_key):
             if not audio_path:
-                return "No file uploaded", ""
+                return "No file uploaded", "", "", ""
 
-            # First process the uploaded file
             try:
-                # FIXED: Removed progress_tracker
+                # Process the uploaded file
                 processed_path, status_msg, duration = transcriber.audio_processor.process_uploaded_file(audio_path)
 
                 if not processed_path:
-                    return status_msg, ""
+                    return status_msg, "", "", ""
 
                 # Set for cost calculation
                 estimated_cost = transcriber.openai_client.get_estimated_cost(duration)
@@ -840,143 +798,93 @@ def create_interface():
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
 
+                # Analyze
+                analysis_result = ""
+                thinking_process = ""
+                if transcription and not transcription.startswith("Error"):
+                    analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
+                    # Add to agent memory
+                    transcriber.add_to_agent_memory(transcription, analysis_result)
+
                 status_with_cost = f"{status_msg} (Estimated cost: {estimated_cost})"
-                return status_with_cost, transcription or ""
+                return status_with_cost, transcription or "", analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
-                return f"Error processing file: {str(e)}", ""
+                return f"Error processing file: {str(e)}", "", "", ""
 
         upload_transcribe_btn.click(
-            fn=process_uploaded_audio,
-            inputs=[audio_upload, upload_language, api_key_input],
-            outputs=[upload_status, transcription_output]
+            fn=process_uploaded_audio_with_analysis,
+            inputs=[audio_upload, language_selector, api_key_input],
+            outputs=[upload_status, transcription_output, analysis_output, thinking_display]
         ).then(
             fn=transcriber.get_session_history,
             inputs=[],
             outputs=[history_display]
         )
 
-        # IMPROVED: Copy to clipboard with proper JS integration
-        def copy_to_clipboard(text):
-            return None
+        # Process source file upload
+        def handle_source_file(file_obj):
+            if file_obj is None:
+                return None, "No source file selected"
+            return file_obj.name, f"Source file loaded: {os.path.basename(file_obj.name)}"
 
-        copy_btn.click(
-            fn=copy_to_clipboard,
-            inputs=[transcription_output],
-            outputs=[],
-            js="""
-            async (text) => {
-                if (!text) {
-                    // Show message if there's nothing to copy
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = 'Nothing to copy!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                    return [];
-                }
-
-                try {
-                    await navigator.clipboard.writeText(text);
-                    // Show a brief message
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '✓ Copied!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                } catch (err) {
-                    console.error('Failed to copy: ', err);
-                    // Show error message
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '❌ Copy failed!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                }
-                return [];
-            }
-            """
+        source_file_upload.change(
+            fn=handle_source_file,
+            inputs=[source_file_upload],
+            outputs=[source_file_path, status_msg]
         )
 
-        # IMPROVED: Download transcript with proper JS integration
-        def download_transcript(text):
-            return None
+        # Analyze text input
+        def analyze_text_input(text, source_file):
+            if not text:
+                return "No text provided for analysis", "", ""
 
-        download_btn.click(
-            fn=download_transcript,
-            inputs=[transcription_output],
-            outputs=[],
-            js="""
-            async (text) => {
-                if (!text) {
-                    // Show message if there's nothing to download
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = 'Nothing to download!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                    return [];
-                }
+            try:
+                # Analyze with optional source file
+                analysis_result, thinking_process = transcriber.analyze_transcription(text, source_file)
 
-                try {
-                    const blob = new Blob([text], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `transcript_${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.txt`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
+                # Add to agent memory
+                transcriber.add_to_agent_memory(text, analysis_result)
 
-                    // Show a brief message
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '✓ Downloaded!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                } catch (err) {
-                    console.error('Failed to download: ', err);
-                    // Show error message
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '❌ Download failed!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                }
-                return [];
-            }
-            """
-        )
+                return "Text analysis completed", analysis_result, thinking_process
+            except Exception as e:
+                logger.error(f"Error analyzing text: {str(e)}")
+                return f"Error analyzing text: {str(e)}", "", ""
 
-        # Initialize agent
-        def init_agent(api_key):
-            success = transcriber.initialize_agent(api_key)
-            if success:
-                return "Agent Status: ✓ Initialized"
-            else:
-                return "Agent Status: ❌ Initialization failed (API key required)"
-
-        initialize_agent_btn.click(
-            fn=init_agent,
-            inputs=[api_key_input],
-            outputs=[agent_status]
+        analyze_text_btn.click(
+            fn=analyze_text_input,
+            inputs=[text_input, source_file_path],
+            outputs=[status_msg, analysis_output, thinking_display]
+        ).then(
+            fn=lambda: update_memory_display(),
+            inputs=[],
+            outputs=[memory_display]
         )
 
         # Analyze transcription
-        def analyze_transcription(text):
-            if not text:
-                return "No transcription to analyze"
+        def analyze_current_transcription(transcription, source_file):
+            if not transcription:
+                return "No transcription to analyze", "", ""
 
-            analysis = transcriber.analyze_transcription(text)
-            if analysis:
-                # Add to memory
-                transcriber.add_to_agent_memory(text, analysis)
+            try:
+                analysis_result, thinking_process = transcriber.analyze_transcription(transcription, source_file)
 
-                # Update memory display
-                update_memory_display()
+                # Add to agent memory
+                transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                return analysis
-            return "Analysis failed"
+                return "Analysis completed", analysis_result, thinking_process
+            except Exception as e:
+                logger.error(f"Error in analyze_transcription: {str(e)}")
+                return f"Analysis error: {str(e)}", "", ""
 
         analyze_btn.click(
-            fn=analyze_transcription,
-            inputs=[transcription_output],
-            outputs=[analysis_output]
+            fn=analyze_current_transcription,
+            inputs=[transcription_output, source_file_path],
+            outputs=[status_msg, analysis_output, thinking_display]
+        ).then(
+            fn=lambda: update_memory_display(),
+            inputs=[],
+            outputs=[memory_display]
         )
 
         # Clear agent memory
@@ -1001,6 +909,118 @@ def create_interface():
                 memory_text += f"{i}. **{item['timestamp']}** - {item['transcription'][:50]}...\n\n"
 
             return memory_text
+
+        # Copy and Download functions
+        def copy_to_clipboard(text):
+            return None
+
+        copy_btn.click(
+            fn=copy_to_clipboard,
+            inputs=[transcription_output],
+            outputs=[],
+            js="""
+            async (text) => {
+                if (!text) {
+                    const el = document.getElementById('copy_btn');
+                    const originalText = el.textContent;
+                    el.textContent = 'Nothing to copy!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                    return [];
+                }
+
+                try {
+                    await navigator.clipboard.writeText(text);
+                    const el = document.getElementById('copy_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '✓ Copied!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy: ', err);
+                    const el = document.getElementById('copy_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '❌ Copy failed!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                }
+                return [];
+            }
+            """
+        )
+
+        copy_analysis_btn.click(
+            fn=copy_to_clipboard,
+            inputs=[analysis_output],
+            outputs=[],
+            js="""
+            async (text) => {
+                if (!text) {
+                    const el = document.getElementById('copy_analysis_btn');
+                    const originalText = el.textContent;
+                    el.textContent = 'Nothing to copy!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                    return [];
+                }
+
+                try {
+                    await navigator.clipboard.writeText(text);
+                    const el = document.getElementById('copy_analysis_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '✓ Copied!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy: ', err);
+                    const el = document.getElementById('copy_analysis_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '❌ Copy failed!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                }
+                return [];
+            }
+            """
+        )
+
+        def download_transcript(text):
+            return None
+
+        download_btn.click(
+            fn=download_transcript,
+            inputs=[transcription_output],
+            outputs=[],
+            js="""
+            async (text) => {
+                if (!text) {
+                    const el = document.getElementById('download_btn');
+                    const originalText = el.textContent;
+                    el.textContent = 'Nothing to download!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                    return [];
+                }
+
+                try {
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `transcript_${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    const el = document.getElementById('download_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '✓ Downloaded!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                } catch (err) {
+                    console.error('Failed to download: ', err);
+                    const el = document.getElementById('download_btn');
+                    const originalText = el.textContent;
+                    el.textContent = '❌ Download failed!';
+                    setTimeout(() => { el.textContent = originalText; }, 2000);
+                }
+                return [];
+            }
+            """
+        )
 
     return app
 
