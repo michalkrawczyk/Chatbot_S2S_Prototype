@@ -8,6 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from utils import logger
+
 
 # Define agent components
 class AgentState(TypedDict):
@@ -58,6 +60,8 @@ def create_agent(model_name="o3-mini"):
     # Set the entry point
     workflow.set_entry_point("agent")
 
+    logger.info(f"Agent created with model: {model_name}")
+
     # Compile the graph
     return workflow.compile()
 
@@ -89,18 +93,19 @@ def run_agent_on_text(text, memory, tools=None, return_thinking=False):
         tools=tools or {},
         memory=memory or []
     )
+    thinking_process_message = ""
 
     try:
         result = agent_executor.invoke(initial_state)
         # Extract the last AI message
         if return_thinking:
            # TODO
-            pass
+            thinking_process_message = "Not implemented yet"
 
 
         for message in reversed(result["messages"]):
             if isinstance(message, AIMessage):
-                return message.content
+                return message.content, thinking_process_message
 
         return "No response generated."
     except Exception as e:
