@@ -13,6 +13,8 @@ from utils import logger
 from audio import AudioProcessor
 from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
+import traceback
+
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
@@ -686,6 +688,8 @@ def create_interface():
                 return status_msg, transcription or "", analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
+                logger.error(traceback.format_exc())
+
                 return f"Error processing file: {str(e)}", "", "", ""
 
         upload_transcribe_btn.click(
