@@ -187,21 +187,6 @@ class OpenAIClient:
         supported_languages = SUPPORT_LANGUAGES
         return language in supported_languages
 
-    def get_estimated_cost(self, duration_seconds):
-        """
-        Calculate estimated cost based on current pricing
-
-        Args:
-            duration_seconds (float): Duration of audio in seconds
-
-        Returns:
-            str: Formatted cost estimate
-        """
-        # Current pricing: $0.006 per minute
-        cost_per_minute = 0.006
-        cost = (duration_seconds / 60) * cost_per_minute
-        return f"${cost:.4f}"
-
 
 class SpacesTranscriber:
     """Main application class for Hugging Face Spaces"""
@@ -214,6 +199,7 @@ class SpacesTranscriber:
         self.transcription_cache = {}  # Cache for transcriptions
         self.agent_memory = []  # Memory for the agent
         self.thinking_process = ""  # For storing agent's thinking process
+        self.current_model = None  # Track the current model
 
     def connect_to_openai(self, api_key):
         """
@@ -244,7 +230,6 @@ class SpacesTranscriber:
                 - str: Status message
                 - str or None: Path to audio file or None
                 - str or None: Transcription or None
-                - str: Estimated cost
                 - float: Duration in seconds
         """
         logger.info(
@@ -255,10 +240,7 @@ class SpacesTranscriber:
 
         if not audio_path:
             logger.warning(f"Recording processing failed: {status_msg}")
-            return status_msg, None, None, "$0.00", 0
-
-        # Calculate estimated cost
-        estimated_cost = self.openai_client.get_estimated_cost(duration)
+            return status_msg, None, None, 0
 
         # Prepare response
         transcription = None
@@ -306,7 +288,7 @@ class SpacesTranscriber:
         logger.info(
             f"Recording handled: path={audio_path}, duration={duration:.2f}s, transcribed={transcription is not None}")
         # Return results
-        return status_msg, audio_path, transcription, estimated_cost, duration
+        return status_msg, audio_path, transcription, duration
 
     def transcribe_audio(self, audio_path, language, api_key=None):
         """
@@ -447,9 +429,13 @@ class SpacesTranscriber:
 
         return results
 
-    def initialize_agent(self, api_key):
-        """Initialize the agent with the OpenAI API key."""
-        return initialize_agent(api_key)
+    def initialize_agent_ui(self, api_key, model_name=None):
+        """Initialize the agent with the OpenAI API key and optional model."""
+        if model_name:
+            self.current_model = model_name
+            logger.info(f"Setting agent model to: {model_name}")
+
+        return initialize_agent(api_key, model_name=self.current_model)
 
     def analyze_transcription(self, transcription, source_file=None):
         """
@@ -545,7 +531,6 @@ def create_interface():
                         label="Agent Model",
                         info="Select the model for the AI agent"
                     )
-                    initialize_agent_btn = gr.Button("Initialize Agent", variant="primary")
                     agent_status = gr.Markdown("Agent Status: Not initialized")
 
                 # Language selection
@@ -613,20 +598,12 @@ def create_interface():
                         )
                         analyze_text_btn = gr.Button("Analyze Text", variant="primary")
 
-                # Status and cost info
-                with gr.Row():
-                    status_msg = gr.Textbox(
-                        label="Status",
-                        value="Ready to record or input text",
-                        interactive=False,
-                        scale=3
-                    )
-                    cost_display = gr.Textbox(
-                        label="Estimated Cost",
-                        value="$0.00",
-                        interactive=False,
-                        scale=1
-                    )
+                # Status info
+                status_msg = gr.Textbox(
+                    label="Status",
+                    value="Ready to record or input text",
+                    interactive=False
+                )
 
                 # Transcription output
                 gr.Markdown("### Transcription")
@@ -680,27 +657,40 @@ def create_interface():
                     return f"**Last Recording:**\n- Duration: {duration_str}\n- Size: {size_kb:.1f} KB\n- File: {filename}"
             return "No recording yet"
 
-        # Connect to OpenAI and initialize agent
-        def connect_and_init(api_key, model_name):
-            # Connect to OpenAI
+        # Connect to OpenAI
+        def connect_to_openai(api_key):
             message, success, color = transcriber.openai_client.connect(api_key)
             status_html = f"<span style='color: {color}'>{message}</span>"
-
-            # Initialize agent if connection successful
-            agent_status_msg = "Agent Status: Not initialized"
-            if success:
-                success = transcriber.initialize_agent(api_key)
-                if success:
-                    agent_status_msg = f"Agent Status: ✓ Initialized with {model_name} model"
-                else:
-                    agent_status_msg = "Agent Status: ❌ Initialization failed"
-
-            return status_html, agent_status_msg
+            return status_html
 
         connect_btn.click(
-            fn=connect_and_init,
-            inputs=[api_key_input, agent_model_selector],
-            outputs=[api_status, agent_status]
+            fn=connect_to_openai,
+            inputs=[api_key_input],
+            outputs=[api_status]
+        )
+
+        # Auto-initialize agent when model is selected
+        def on_model_change(model, api_key):
+            if not api_key:
+                return "Agent Status: ⚠️ No API key provided"
+
+            # Ensure we're connected to OpenAI
+            if not transcriber.openai_client.connected:
+                message, success, _ = transcriber.openai_client.connect(api_key)
+                if not success:
+                    return f"Agent Status: ❌ Connection failed: {message}"
+
+            # Initialize agent with selected model
+            success = transcriber.initialize_agent_ui(api_key, model)
+            if success:
+                return f"Agent Status: ✓ Initialized with {model} model"
+            else:
+                return "Agent Status: ❌ Initialization failed"
+
+        agent_model_selector.change(
+            fn=on_model_change,
+            inputs=[agent_model_selector, api_key_input],
+            outputs=[agent_status]
         )
 
         # Process recording with auto transcription and analysis
@@ -708,7 +698,7 @@ def create_interface():
             # Validate audio data format
             if audio_data is None or not isinstance(audio_data, tuple) or len(audio_data) != 2:
                 logger.warning(f"Invalid audio data format: {type(audio_data)}")
-                return "Invalid or no audio recorded", None, "", "$0.00", 0, "", ""
+                return "Invalid or no audio recorded", None, "", 0, "", ""
 
             # Extract audio data and sample rate
             audio_array, sample_rate = audio_data
@@ -742,7 +732,7 @@ def create_interface():
                     language_value
                 )
 
-                status_msg, audio_path, transcription, estimated_cost, duration = result
+                status_msg, audio_path, transcription, duration = result
 
                 # Default values in case analysis fails
                 analysis_result = ""
@@ -760,15 +750,15 @@ def create_interface():
                         analysis_result = f"Analysis error: {str(e)}"
                         thinking_process = ""
 
-                return status_msg, audio_path, transcription or "", estimated_cost, duration, analysis_result, thinking_process
+                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error in handle_recording_wrapper: {str(e)}")
-                return f"Error processing recording: {str(e)}", None, "", "$0.00", 0, "", ""
+                return f"Error processing recording: {str(e)}", None, "", 0, "", ""
 
         audio_recorder.stop_recording(
             fn=handle_recording_with_analysis,
             inputs=[audio_recorder],
-            outputs=[status_msg, audio_playback, transcription_output, cost_display, current_duration, analysis_output,
+            outputs=[status_msg, audio_playback, transcription_output, current_duration, analysis_output,
                      thinking_display]
         ).then(
             fn=update_recording_info,
@@ -792,9 +782,6 @@ def create_interface():
                 if not processed_path:
                     return status_msg, "", "", ""
 
-                # Set for cost calculation
-                estimated_cost = transcriber.openai_client.get_estimated_cost(duration)
-
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
 
@@ -806,8 +793,7 @@ def create_interface():
                     # Add to agent memory
                     transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                status_with_cost = f"{status_msg} (Estimated cost: {estimated_cost})"
-                return status_with_cost, transcription or "", analysis_result, thinking_process
+                return status_msg, transcription or "", analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
                 return f"Error processing file: {str(e)}", "", "", ""

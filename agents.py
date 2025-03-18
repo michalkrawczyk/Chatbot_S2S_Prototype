@@ -66,17 +66,17 @@ def create_agent(model_name="o3-mini"):
 agent_executor = None
 
 
-def initialize_agent(api_key):
+def initialize_agent(api_key, model_name="o3-mini"):
     """Initialize the agent with the provided API key."""
     global agent_executor
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
-        agent_executor = create_agent()
+        agent_executor = create_agent(model_name=model_name)
         return True
     return False
 
 
-def run_agent_on_text(text, memory, tools=None):
+def run_agent_on_text(text, memory, tools=None, return_thinking=False):
     """Run the agent on the provided text."""
     if not agent_executor:
         return "Agent not initialized. Please provide a valid OpenAI API key."
@@ -93,6 +93,11 @@ def run_agent_on_text(text, memory, tools=None):
     try:
         result = agent_executor.invoke(initial_state)
         # Extract the last AI message
+        if return_thinking:
+           # TODO
+            pass
+
+
         for message in reversed(result["messages"]):
             if isinstance(message, AIMessage):
                 return message.content
