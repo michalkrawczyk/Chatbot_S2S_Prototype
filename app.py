@@ -5,19 +5,17 @@ import time
 import tempfile
 
 from datetime import datetime
-from openai import OpenAI
+
 from pathlib import Path
 
 from agents import AgentLLM
 from utils import logger
 from audio import AudioProcessor
+from openai import OpenAIClient, SUPPORT_LANGUAGES
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-SUPPORT_LANGUAGES = [
-    "auto", "en", "es", "fr", "de", "it", "pt", "nl",
-    "ru", "zh", "ja", "ar", "hi", "ko", "pl"
-]
+
 
 AGENT = AgentLLM()
 
@@ -72,121 +70,7 @@ class SpacesConfig:
             logger.error(f"Error in destructor: {e}")
 
 
-class OpenAIClient:
-    """Handles OpenAI API interactions"""
 
-    def __init__(self, default_api_key=""):
-        self.client = None
-        self.connected = False
-        self.last_error = None
-        self.default_api_key = default_api_key
-
-        # Try to connect with default key
-        if self.default_api_key:
-            self.connect(self.default_api_key)
-
-    def connect(self, api_key):
-        """
-        Initialize the OpenAI client with the provided API key
-
-        Args:
-            api_key (str): The OpenAI API key
-
-        Returns:
-            tuple: A tuple containing:
-                - str: Status message
-                - bool: Success status
-                - str: Color for status display
-        """
-        if not api_key:
-            return "Please enter your OpenAI API key", False, "red"
-
-        try:
-            # Log connection attempt without revealing the full key
-            masked_key = f"***{api_key[-4:]}" if len(api_key) > 4 else "***"
-            logger.info(f"Attempting to connect with API key: {masked_key}")
-
-            client = OpenAI(api_key=api_key)
-            # Test connection with a lightweight call
-            client.models.list()
-            self.client = client
-            self.connected = True
-            self.last_error = None
-            logger.info("Successfully connected to OpenAI API")
-            return "✓ Successfully connected to OpenAI API", True, "green"
-        except Exception as e:
-            error_msg = str(e)
-            self.last_error = error_msg
-            self.connected = False
-            logger.error(f"OpenAI connection error: {error_msg}")
-            return f"❌ Error connecting to OpenAI: {error_msg}", False, "red"
-
-    def transcribe_audio(self, audio_path, language="auto", max_retries=3):
-        """
-        Transcribe audio using OpenAI's Whisper API with retry logic
-
-        Args:
-            audio_path (str): Path to the audio file
-            language (str): Language code or "auto" for automatic detection
-            max_retries (int): Maximum number of retry attempts
-
-        Returns:
-            str: Transcription text or error message
-        """
-        if not self.client:
-            return "OpenAI client not initialized. Please enter your API key."
-
-        if not audio_path or not os.path.exists(audio_path):
-            return "No audio file available for transcription."
-
-        # Validate language
-        if language and language != "auto" and not self._validate_language(language):
-            return f"Unsupported language: {language}. Please select from the supported options."
-
-        retries = 0
-        while retries < max_retries:
-            try:
-                # Additional parameters based on language
-                params = {"model": "whisper-1"}
-                if language and language != "auto":
-                    params["language"] = language
-
-                logger.info(
-                    f"Transcribing file: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
-                with open(audio_path, "rb") as audio_file:
-                    response = self.client.audio.transcriptions.create(
-                        file=audio_file,
-                        **params
-                    )
-
-                logger.info(f"Transcription successful: {len(response.text)} characters")
-                return response.text
-            except Exception as e:
-                retries += 1
-                error_msg = str(e)
-                logger.warning(f"Transcription attempt {retries} failed: {error_msg}")
-
-                if retries >= max_retries:
-                    logger.error(f"Transcription failed after {max_retries} attempts: {error_msg}")
-                    return f"Transcription error: {error_msg}"
-
-                # Wait before retrying with exponential backoff
-                wait_time = 2 * retries
-                logger.info(f"Waiting {wait_time}s before retry...")
-                time.sleep(wait_time)
-
-    def _validate_language(self, language):
-        """
-        Validate if the language is supported by OpenAI's Whisper API
-
-        Args:
-            language (str): Language code to validate
-
-        Returns:
-            bool: True if language is supported, False otherwise
-        """
-        supported_languages = SUPPORT_LANGUAGES
-        return language in supported_languages
 
 
 class SpacesTranscriber:
@@ -970,49 +854,49 @@ def create_interface():
             """
         )
 
-        def download_transcript(text):
-            return None
+        # def download_transcript(text):
+        #     return None
 
-        download_btn.click(
-            fn=download_transcript,
-            inputs=[transcription_output],
-            outputs=[],
-            js="""
-            async (text) => {
-                if (!text) {
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = 'Nothing to download!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                    return [];
-                }
-
-                try {
-                    const blob = new Blob([text], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `transcript_${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.txt`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '✓ Downloaded!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                } catch (err) {
-                    console.error('Failed to download: ', err);
-                    const el = document.getElementById('download_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '❌ Download failed!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                }
-                return [];
-            }
-            """
-        )
+        # download_btn.click(
+        #     fn=download_transcript,
+        #     inputs=[transcription_output],
+        #     outputs=[],
+        #     js="""
+        #     async (text) => {
+        #         if (!text) {
+        #             const el = document.getElementById('download_btn');
+        #             const originalText = el.textContent;
+        #             el.textContent = 'Nothing to download!';
+        #             setTimeout(() => { el.textContent = originalText; }, 2000);
+        #             return [];
+        #         }
+        #
+        #         try {
+        #             const blob = new Blob([text], { type: 'text/plain' });
+        #             const url = URL.createObjectURL(blob);
+        #             const a = document.createElement('a');
+        #             a.href = url;
+        #             a.download = `transcript_${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.txt`;
+        #             document.body.appendChild(a);
+        #             a.click();
+        #             document.body.removeChild(a);
+        #             URL.revokeObjectURL(url);
+        #
+        #             const el = document.getElementById('download_btn');
+        #             const originalText = el.textContent;
+        #             el.textContent = '✓ Downloaded!';
+        #             setTimeout(() => { el.textContent = originalText; }, 2000);
+        #         } catch (err) {
+        #             console.error('Failed to download: ', err);
+        #             const el = document.getElementById('download_btn');
+        #             const originalText = el.textContent;
+        #             el.textContent = '❌ Download failed!';
+        #             setTimeout(() => { el.textContent = originalText; }, 2000);
+        #         }
+        #         return [];
+        #     }
+        #     """
+        # )
 
     return app
 
