@@ -620,7 +620,7 @@ def create_interface():
                 # Copy and download buttons for transcription
                 with gr.Row():
                     copy_btn = gr.Button("Copy Transcription", elem_id="copy_btn")
-                    download_btn = gr.Button("Download Transcript", elem_id="download_btn")
+                    # download_btn = gr.Button("Download Transcript", elem_id="download_btn")
                     analyze_btn = gr.Button("Analyze Transcription", variant="primary")
 
             # Output area for analysis
