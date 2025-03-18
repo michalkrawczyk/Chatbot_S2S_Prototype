@@ -11,7 +11,7 @@ from pathlib import Path
 from agents import AgentLLM
 from utils import logger
 from audio import AudioProcessor
-from openai import OpenAIClient, SUPPORT_LANGUAGES
+from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
