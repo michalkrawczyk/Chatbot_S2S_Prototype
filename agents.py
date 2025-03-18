@@ -17,9 +17,9 @@ class AgentState(TypedDict):
     memory: List[Dict[str, Any]]
 
 
-def create_agent(model_name="gpt-3.5-turbo"):
+def create_agent(model_name="o3-mini"):
     """Create an agent with the specified model."""
-    llm = ChatOpenAI(model=model_name, temperature=0.7)
+    llm = ChatOpenAI(model=model_name, temperature=0.0)
 
     # Define the system prompt
     system_prompt = """You are a helpful AI assistant that analyzes transcribed text.
