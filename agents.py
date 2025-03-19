@@ -7,6 +7,7 @@ from typing import TypedDict, List, Dict, Any, Annotated, Literal, Optional, Uni
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
 
 from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 
@@ -17,6 +18,14 @@ class AgentState(TypedDict):
     messages: List[BaseMessage]
     tools: Dict[str, Any]
     memory: List[Dict[str, Any]]
+
+
+def should_continue(state: AgentState) -> Literal["tools", END]:
+    messages = state['messages']
+    last_message = messages[-1] # If the LLM makes a tool call, then we route to the "tools" node
+    if last_message.tool_calls:
+        return "tools" # Otherwise, we stop (reply to the user)
+    return END
 
 
 def create_agent(model_name="o3-mini"):
@@ -54,16 +63,20 @@ def create_agent(model_name="o3-mini"):
         return state
 
     # Build the graph
-    workflow = lg.Graph()
+    workflow = lg.StateGraph(AgentState)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", call_tools)
 
     # Define edges
-    workflow.add_edge("agent", "tools")
-    workflow.add_edge("tools", "agent")
+    workflow.add_edge(START, "agent")
 
-    # Set the entry point
-    workflow.set_entry_point("agent")
+    workflow.add_conditional_edges(
+        # First, we define the start node. We use 'agent'. # This means these are the edges taken after the 'agent' node is called.
+        "agent",  # Next, we pass in the function that will determine which node is called next.
+        should_continue,
+    )
+
+    workflow.add_edge("tools", 'agent')
 
     logger.info(f"Agent created with model: {model_name}")
 
