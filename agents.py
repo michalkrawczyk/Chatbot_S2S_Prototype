@@ -115,7 +115,7 @@ class AgentLLM:
 
             return "No response generated."
         except Exception as e:
-            return f"Error running agent: {str(e)}"
+            return f"Error running agent: {str(e)}", thinking_process_message
 
     @property
     def get_agent_executor(self):
