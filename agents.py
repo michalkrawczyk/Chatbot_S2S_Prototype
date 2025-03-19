@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE
+from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 
 
 # Define agent components
@@ -39,7 +39,12 @@ def create_agent(model_name="o3-mini"):
     # Function to call the language model
     def call_model(state):
         messages = create_messages(state)
-        response = llm.invoke(messages)
+        config = {"recursion_limit": RECURSION_LIMIT,
+                    "agent_trace": AGENT_TRACE,
+                    "verbose": AGENT_VERBOSE}
+
+        conditional_debug_info(f"call_model: Calling model with messages: {messages}")
+        response = llm.invoke(messages, config=config)
         return {"messages": state["messages"] + [response]}
 
     # Tool calling logic would go here in a more complex setup
@@ -99,7 +104,8 @@ class AgentLLM:
         )
         thinking_process_message = ""
         config = {"recursion_limit": RECURSION_LIMIT,
-                    "agent_trace": AGENT_TRACE}
+                    "agent_trace": AGENT_TRACE,
+                    "verbose": AGENT_VERBOSE}
 
         try:
             result = self._agent_executor.invoke(initial_state,config=config)
