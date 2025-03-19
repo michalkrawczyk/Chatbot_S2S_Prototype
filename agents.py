@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from utils import logger
+from utils import logger, conditional_debug_info
 
 
 # Define agent components
@@ -108,6 +108,8 @@ class AgentLLM:
 
 
             for message in reversed(result["messages"]):
+                conditional_debug_info(f"Message: {message}")
+
                 if isinstance(message, AIMessage):
                     return message.content, thinking_process_message
 
