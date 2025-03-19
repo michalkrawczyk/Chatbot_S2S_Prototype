@@ -29,7 +29,7 @@ def should_continue(state: AgentState) -> Literal["tools", END]:
 
 def create_agent(model_name="o3-mini"):
     """Create an agent with the specified model."""
-    llm = ChatOpenAI(model=model_name, temperature=0.0)
+    llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
 
     # Define the system prompt
     system_prompt = """You are a helpful AI assistant that analyzes transcribed text.
@@ -101,7 +101,7 @@ class AgentLLM:
         return False
 
 
-    def run_agent_on_text(self, text, memory, tools=None, return_thinking=False):
+    def run_agent_on_text(self, text, memory, return_thinking=False):
         """Run the agent on the provided text."""
         if not self._agent_executor:
             return "Agent not initialized. Please provide a valid OpenAI API key."
@@ -111,7 +111,6 @@ class AgentLLM:
 
         initial_state = AgentState(
             messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
-            tools=tools or {},
             memory=memory or []
         )
         thinking_process_message = ""

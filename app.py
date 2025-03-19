@@ -99,7 +99,18 @@ class SpacesTranscriber:
             str: HTML-formatted status message
         """
         message, success, color = self.openai_client.connect(api_key)
-        self.initialize_agent_ui(api_key, model_name=self.current_model)
+        status_html = f"<span style='color: {color}'>{message}</span>"
+
+        if success:
+            # Initialize the agent with the default model
+            agent_init_success = self.initialize_agent_ui(api_key, model_name=self.current_model)
+
+            # Pass agent status to UI
+            if agent_init_success:
+                return status_html, f"Agent Status: ✓ Initialized with {self.current_model} model"
+            else:
+                return status_html, "Agent Status: ❌ Initialization failed"
+
         return f"<span style='color: {color}'>{message}</span>"
 
     def handle_recording(self, audio_data, sample_rate, auto_transcribe, api_key, language):
