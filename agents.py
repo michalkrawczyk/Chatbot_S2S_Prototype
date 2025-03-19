@@ -64,7 +64,7 @@ def create_agent(model_name="o3-mini"):
     # Build the graph
     workflow = lg.StateGraph(AgentState)
     workflow.add_node("agent", call_model)
-    workflow.add_node("tool_executor", call_tools)
+    workflow.add_node("tools", call_tools)
 
     # Define edges
     workflow.add_edge(START, "agent")
@@ -75,7 +75,7 @@ def create_agent(model_name="o3-mini"):
         should_continue,
     )
 
-    workflow.add_edge("tool_executor", 'agent')
+    workflow.add_edge("tools", 'agent')
 
     logger.info(f"Agent created with model: {model_name}")
 
