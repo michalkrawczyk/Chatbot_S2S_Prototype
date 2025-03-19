@@ -10,6 +10,8 @@ logging.basicConfig(
 
 # Settings
 DEBUG_INFO = True
+RECURSION_LIMIT = 5
+AGENT_TRACE = True
 
 def conditional_debug_info(*args, **kwargs):
     if DEBUG_INFO:

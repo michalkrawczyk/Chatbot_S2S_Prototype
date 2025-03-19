@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from utils import logger, conditional_debug_info
+from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE
 
 
 # Define agent components
@@ -98,9 +98,11 @@ class AgentLLM:
             memory=memory or []
         )
         thinking_process_message = ""
+        config = {"recursion_limit": RECURSION_LIMIT,
+                    "agent_trace": AGENT_TRACE}
 
         try:
-            result = self._agent_executor.invoke(initial_state)
+            result = self._agent_executor.invoke(initial_state,config=config)
             # Extract the last AI message
             if return_thinking:
                # TODO
@@ -108,7 +110,7 @@ class AgentLLM:
 
 
             for message in reversed(result["messages"]):
-                conditional_debug_info(f"Message: {message}")
+                # conditional_debug_info(f"Message: {message}")
 
                 if isinstance(message, AIMessage):
                     return message.content, thinking_process_message
