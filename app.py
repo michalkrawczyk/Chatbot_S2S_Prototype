@@ -3,6 +3,7 @@ import gradio as gr
 import os
 import time
 import tempfile
+import shutil
 
 from datetime import datetime
 
@@ -27,6 +28,7 @@ class SpacesConfig:
     def __init__(self):
         # Use temp directory for recordings to avoid filling Spaces storage
         self.temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
+        self.memory_files_dir = Path("memory_files")  # New directory for uploaded files
         self.max_recording_length_seconds = 300  # 5 minutes to avoid timeouts
         self.max_history_items = 5  # Limit history to save memory
         self.supported_languages = SUPPORT_LANGUAGES
@@ -36,6 +38,7 @@ class SpacesConfig:
     def initialize(self):
         """Initialize directories"""
         self.temp_dir.mkdir(exist_ok=True, parents=True)
+        self.memory_files_dir.mkdir(exist_ok=True, parents=True)  # Create memory_files directory
         self._cleanup_on_start()
 
     def _cleanup_on_start(self):
@@ -440,9 +443,22 @@ def create_interface():
                     info="Select language or 'auto' for automatic detection"
                 )
 
-                # Session history
-                with gr.Accordion("Previous Sessions", open=False):
-                    history_display = gr.Markdown("No previous recordings in this session.")
+                # File upload section for memory files (NEW)
+                with gr.Group():
+                    gr.Markdown("### Upload Files to Memory")
+                    memory_files_upload = gr.File(
+                        label="Upload Files",
+                        file_count="multiple",
+                        file_types=["*.*"],
+                        type="file"
+                    )
+                    upload_memory_files_btn = gr.Button("Save to Memory Files", variant="secondary")
+                    memory_upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
+
+                # Display uploaded files (NEW)
+                with gr.Accordion("Uploaded Files", open=True):
+                    uploaded_files_display = gr.Markdown("No files have been uploaded yet.")
+                    refresh_files_btn = gr.Button("Refresh Files List", variant="secondary")
 
                 # Agent memory
                 with gr.Accordion("Agent Memory", open=False):
@@ -517,7 +533,6 @@ def create_interface():
                 # Copy and download buttons for transcription
                 with gr.Row():
                     copy_btn = gr.Button("Copy Transcription", elem_id="copy_btn")
-                    # download_btn = gr.Button("Download Transcript", elem_id="download_btn")
                     analyze_btn = gr.Button("Analyze Transcription", variant="primary")
 
             # Output area for analysis
@@ -664,10 +679,6 @@ def create_interface():
             fn=update_recording_info,
             inputs=[current_duration],
             outputs=[status_msg]
-        ).then(
-            fn=transcriber.get_session_history,
-            inputs=[],
-            outputs=[history_display]
         )
 
         # Process uploaded audio with automatic analysis
@@ -688,7 +699,6 @@ def create_interface():
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
                 conditional_debug_info(f"- Transcription: {transcription}")
 
-
                 # Analyze
                 analysis_result = ""
                 thinking_process = ""
@@ -703,19 +713,13 @@ def create_interface():
                 return status_msg, transcription or "", analysis_result, thinking_process
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
-
                 conditional_debug_info(traceback.format_exc())
-
                 return f"Error processing file: {str(e)}", "", "", ""
 
         upload_transcribe_btn.click(
             fn=process_uploaded_audio_with_analysis,
             inputs=[audio_upload, language_selector, api_key_input],
             outputs=[upload_status, transcription_output, analysis_output, thinking_display]
-        ).then(
-            fn=transcriber.get_session_history,
-            inputs=[],
-            outputs=[history_display]
         )
 
         # Process source file upload
@@ -784,11 +788,70 @@ def create_interface():
             outputs=[memory_display]
         )
 
+        # Handle file uploads to memory_files (NEW)
+        def save_to_memory_files(file_objs):
+            if not file_objs:
+                return "No files uploaded"
+
+            saved_files = []
+            for file_obj in file_objs:
+                try:
+                    if file_obj is None:
+                        continue
+
+                    # Get the filename and create destination path
+                    filename = os.path.basename(file_obj.name)
+                    dest_path = transcriber.config.memory_files_dir / filename
+
+                    # Copy the file to memory_files
+                    shutil.copy(file_obj.name, dest_path)
+                    saved_files.append(filename)
+                except Exception as e:
+                    logger.error(f"Error saving file {file_obj.name if file_obj else 'None'}: {e}")
+
+            if saved_files:
+                return f"Saved {len(saved_files)} files: {', '.join(saved_files)}"
+            else:
+                return "No files were saved"
+
+        # List all files in memory_files directory (NEW)
+        def list_memory_files():
+            try:
+                files = list(transcriber.config.memory_files_dir.glob("*.*"))
+                if not files:
+                    return "No files have been uploaded yet."
+
+                file_list = "### Uploaded Files:\n\n"
+                for i, file_path in enumerate(files, 1):
+                    file_size = file_path.stat().st_size / 1024  # Size in KB
+                    file_list += f"{i}. **{file_path.name}** ({file_size:.1f} KB)\n"
+
+                return file_list
+            except Exception as e:
+                logger.error(f"Error listing memory files: {e}")
+                return f"Error listing files: {str(e)}"
+
+        # Connect the file upload buttons to their functions (NEW)
+        upload_memory_files_btn.click(
+            fn=save_to_memory_files,
+            inputs=[memory_files_upload],
+            outputs=[memory_upload_status]
+        ).then(
+            fn=list_memory_files,
+            inputs=[],
+            outputs=[uploaded_files_display]
+        )
+
+        refresh_files_btn.click(
+            fn=list_memory_files,
+            inputs=[],
+            outputs=[uploaded_files_display]
+        )
+
         # Clear agent memory
         def clear_memory():
             result = transcriber.clear_agent_memory()
-            update_memory_display()
-            return result
+            return "Agent memory cleared."
 
         clear_memory_btn.click(
             fn=clear_memory,
@@ -807,7 +870,7 @@ def create_interface():
 
             return memory_text
 
-        # Copy and Download functions
+        # Copy functions
         def copy_to_clipboard(text):
             return None
 
@@ -874,50 +937,6 @@ def create_interface():
             }
             """
         )
-
-        # def download_transcript(text):
-        #     return None
-
-        # download_btn.click(
-        #     fn=download_transcript,
-        #     inputs=[transcription_output],
-        #     outputs=[],
-        #     js="""
-        #     async (text) => {
-        #         if (!text) {
-        #             const el = document.getElementById('download_btn');
-        #             const originalText = el.textContent;
-        #             el.textContent = 'Nothing to download!';
-        #             setTimeout(() => { el.textContent = originalText; }, 2000);
-        #             return [];
-        #         }
-        #
-        #         try {
-        #             const blob = new Blob([text], { type: 'text/plain' });
-        #             const url = URL.createObjectURL(blob);
-        #             const a = document.createElement('a');
-        #             a.href = url;
-        #             a.download = `transcript_${new Date().toISOString().slice(0,19).replace(/[:.]/g, '-')}.txt`;
-        #             document.body.appendChild(a);
-        #             a.click();
-        #             document.body.removeChild(a);
-        #             URL.revokeObjectURL(url);
-        #
-        #             const el = document.getElementById('download_btn');
-        #             const originalText = el.textContent;
-        #             el.textContent = '✓ Downloaded!';
-        #             setTimeout(() => { el.textContent = originalText; }, 2000);
-        #         } catch (err) {
-        #             console.error('Failed to download: ', err);
-        #             const el = document.getElementById('download_btn');
-        #             const originalText = el.textContent;
-        #             el.textContent = '❌ Download failed!';
-        #             setTimeout(() => { el.textContent = originalText; }, 2000);
-        #         }
-        #         return [];
-        #     }
-        #     """
-        # )
 
     return app
 
