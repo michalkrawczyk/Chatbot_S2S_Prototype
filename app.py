@@ -533,7 +533,6 @@ def create_interface():
 
                 # Copy and download buttons for transcription
                 with gr.Row():
-                    copy_btn = gr.Button("Copy Transcription", elem_id="copy_btn")
                     analyze_btn = gr.Button("Analyze Transcription", variant="primary")
 
             # Output area for analysis
@@ -874,38 +873,6 @@ def create_interface():
         # Copy functions
         def copy_to_clipboard(text):
             return None
-
-        copy_btn.click(
-            fn=copy_to_clipboard,
-            inputs=[transcription_output],
-            outputs=[],
-            js="""
-            async (text) => {
-                if (!text) {
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = 'Nothing to copy!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                    return [];
-                }
-
-                try {
-                    await navigator.clipboard.writeText(text);
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '✓ Copied!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                } catch (err) {
-                    console.error('Failed to copy: ', err);
-                    const el = document.getElementById('copy_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '❌ Copy failed!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                }
-                return [];
-            }
-            """
-        )
 
         copy_analysis_btn.click(
             fn=copy_to_clipboard,
