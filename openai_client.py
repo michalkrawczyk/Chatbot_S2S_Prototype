@@ -6,10 +6,25 @@ import tempfile
 from openai import OpenAI
 from utils import logger
 
-SUPPORT_LANGUAGES = [
-    "auto", "en", "es", "fr", "de", "it", "pt", "nl",
-    "ru", "zh", "ja", "ar", "hi", "ko", "pl"
-]
+SUPPORT_LANGUAGES_CAST_DICT = {
+    "auto": "English",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "nl": "Dutch",
+    "ru": "Russian",
+    "zh": "Chinese",
+    "ja": "Japanese",
+    "ar": "Arabic",
+    "hi": "Hindi",
+    "ko": "Korean",
+    "pl": "Polish"
+}
+
+SUPPORT_LANGUAGES = list(SUPPORT_LANGUAGES_CAST_DICT.keys())
 
 class OpenAIClient:
     """Handles OpenAI API interactions"""

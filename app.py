@@ -89,6 +89,7 @@ class SpacesTranscriber:
         self.agent_memory = []  # Memory for the agent
         self.thinking_process = ""  # For storing agent's thinking process
         self.current_model = None  # Track the current model
+        self.default_response_language = "eng" # Default language for responses (For now, English)
 
     def connect_to_openai(self, api_key):
         """
@@ -105,7 +106,8 @@ class SpacesTranscriber:
 
         if success:
             # Initialize the agent with the default model
-            agent_init_success = self.initialize_agent_ui(api_key, model_name=self.current_model)
+            agent_init_success = self.initialize_agent_ui(api_key, model_name=self.current_model,
+                                                          target_language=self.default_response_language)
 
             # Pass agent status to UI
             if agent_init_success:
@@ -330,13 +332,13 @@ class SpacesTranscriber:
 
         return results
 
-    def initialize_agent_ui(self, api_key, model_name=None):
+    def initialize_agent_ui(self, api_key, model_name=None, target_language="eng"):
         """Initialize the agent with the OpenAI API key and optional model."""
         if model_name:
             self.current_model = model_name
             logger.info(f"Setting agent model to: {model_name}")
 
-        return AGENT.initialize_agent(api_key, model_name=self.current_model)
+        return AGENT.initialize_agent(api_key, model_name=self.current_model, target_language=target_language)
 
     def analyze_transcription(self, transcription, source_file=None):
         """
@@ -667,7 +669,8 @@ def create_interface():
                     return f"Agent Status: ❌ Connection failed: {message}"
 
             # Initialize agent with selected model
-            success = transcriber.initialize_agent_ui(api_key, model)
+            success = transcriber.initialize_agent_ui(api_key, model, target_language=language_selector.value)
+            #TODO: ADD agent reinitialization on language change
             if success:
                 conditional_debug_info(
                     f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}")

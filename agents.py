@@ -5,11 +5,11 @@ import langgraph.prebuilt as lgp
 import operator
 from typing import TypedDict, List, Dict, Any, Annotated, Literal, Optional, Union, Callable
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
+from prompt_texts import summary_prompt
 
 
 # Define agent components
@@ -19,24 +19,27 @@ class AgentState(TypedDict):
     memory: List[Dict[str, Any]]
 
 
-def should_continue(state: AgentState) -> Literal["tools", END]:
+def should_continue(state: AgentState) -> Literal["tools", "answer_summary"]:
     messages = state['messages']
     last_message = messages[-1] # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
-        return "tools" # Otherwise, we stop (reply to the user)
-    return END
+        return "tools" # Otherwise, we route to the "answer_summary" node
+    return "answer_summary"
 
 
-def create_agent(model_name="o3-mini"):
+def create_agent(model_name="o3-mini", target_language="eng"):
     """Create an agent with the specified model."""
     llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
-
     # Define the system prompt
     system_prompt = """You are a helpful AI assistant that analyzes transcribed text.
     When presented with transcribed text, analyze it thoroughly and provide insights.
     Use available tools when appropriate to enhance your analysis.
     When referencing information from memory, clearly indicate this in your response.
     """
+
+    summary_llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
+    summary_llm_prompt = summary_prompt(target_language)
+
 
     # Function to create messages for the agent
     def create_messages(state):
@@ -61,10 +64,30 @@ def create_agent(model_name="o3-mini"):
         # This is a simplified version - would implement actual tool calling logic
         return state
 
+    def generate_summary(state):
+        # Get the last AI message
+        for message in reversed(state["messages"]):
+            if isinstance(message, AIMessage):
+                # Extract the content from the AI message
+                response_content = message.content
+
+                # Generate a structured summary
+                summary_message = summary_llm.invoke(
+                    summary_llm_prompt.format(response=response_content)
+                )
+
+                # Update the state with the summary
+                return {"summary": summary_message.content}
+
+        # If no AI message found
+        return {"summary": f"No response to summarize. (in {target_language})"}
+
+
     # Build the graph
     workflow = lg.StateGraph(AgentState)
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", call_tools)
+    workflow.add_node("answer_summary", generate_summary)
 
     # Define edges
     workflow.add_edge(START, "agent")
@@ -76,6 +99,7 @@ def create_agent(model_name="o3-mini"):
     )
 
     workflow.add_edge("tools", 'agent')
+    workflow.add_edge("answer_summary", END)
 
     logger.info(f"Agent created with model: {model_name}")
 
@@ -90,12 +114,12 @@ class AgentLLM:
     _agent_executor = None
     _model_name = ""
 
-    def initialize_agent(self, api_key, model_name="o3-mini"):
+    def initialize_agent(self, api_key, model_name="o3-mini", target_language="eng"):
         """Initialize the agent with the provided API key."""
 
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
-            self._agent_executor = create_agent(model_name=model_name)
+            self._agent_executor = create_agent(model_name=model_name, target_language=target_language)
             self._model_name = model_name
             return True
         return False
