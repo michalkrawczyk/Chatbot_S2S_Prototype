@@ -1,5 +1,7 @@
 import os
 import time
+from pathlib import Path
+import tempfile
 
 from openai import OpenAI
 from utils import logger
@@ -124,3 +126,42 @@ class OpenAIClient:
         """
         supported_languages = SUPPORT_LANGUAGES
         return language in supported_languages
+
+    def text_to_speech(self, text, voice="alloy", stream=True):
+        """
+        Convert text to speech using OpenAI's TTS API
+
+        Args:
+            text (str): The text to convert to speech
+            voice (str): The voice to use (alloy, echo, fable, onyx, nova, or shimmer)
+            stream (bool): Whether to stream the audio or save to file
+
+        Returns:
+            bytes or str: Audio bytes if streaming, file path if saving, or error message
+        """
+        if not self.client:
+            return "Error: Not connected to OpenAI API"
+
+        try:
+            # Call OpenAI TTS API
+            response = self.client.audio.speech.create(
+                model="tts-1",
+                voice=voice,
+                input=text
+            )
+
+            if stream:
+                # Return the audio data as bytes
+                return response.content
+            else:
+                # Save to file (original behavior)
+                temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
+                temp_dir.mkdir(exist_ok=True, parents=True)
+                output_path = str(temp_dir / f"tts_{int(time.time())}.mp3")
+                response.stream_to_file(output_path)
+                logger.info(f"Text-to-speech audio saved to: {output_path}")
+                return output_path
+
+        except Exception as e:
+            logger.error(f"Text-to-speech error: {str(e)}")
+            return f"Error generating speech: {str(e)}"
