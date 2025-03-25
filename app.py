@@ -4,6 +4,7 @@ import os
 import time
 import tempfile
 import shutil
+import atexit
 
 from datetime import datetime
 
@@ -19,8 +20,8 @@ import traceback
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-
 AGENT = AgentLLM()
+
 
 class SpacesConfig:
     """Configuration tailored for Hugging Face Spaces"""
@@ -33,6 +34,7 @@ class SpacesConfig:
         self.max_history_items = 5  # Limit history to save memory
         self.supported_languages = SUPPORT_LANGUAGES
         self.supported_formats = ['.wav', '.mp3', '.m4a', '.flac']
+        self.tts_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]  # TTS voice options
         self.initialize()
 
     def initialize(self):
@@ -73,9 +75,6 @@ class SpacesConfig:
             self._cleanup_on_exit()
         except Exception as e:
             logger.error(f"Error in destructor: {e}")
-
-
-
 
 
 class SpacesTranscriber:
@@ -390,6 +389,57 @@ class SpacesTranscriber:
         if len(self.agent_memory) > max_memory_items:
             self.agent_memory = self.agent_memory[-max_memory_items:]
 
+    def generate_speech_from_text(self, text, voice="alloy"):
+        """
+        Generate speech from text using OpenAI's TTS API
+
+        Args:
+            text (str): Text to convert to speech
+            voice (str): Voice to use
+
+        Returns:
+            tuple: (audio_data or path or None, status message)
+        """
+        if not text:
+            return None, "No text provided for speech synthesis"
+
+        if not self.openai_client.connected:
+            return None, "Not connected to OpenAI API"
+
+        try:
+            # Limit text length to avoid timeouts
+            max_chars = 4000
+            if len(text) > max_chars:
+                text = text[:max_chars] + "... (text truncated for speech synthesis)"
+
+            # Get audio from OpenAI - this returns bytes directly since stream=True is the default
+            result = self.openai_client.text_to_speech(text, voice)
+
+            if isinstance(result, str) and result.startswith("Error"):
+                return None, result
+
+            # For Gradio's audio component to work with bytes, we need to save the data
+            # to a temporary file since Gradio's Audio component works best with files
+            temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+            temp_path = temp_file.name
+
+            # Write bytes to file if we got bytes back
+            if isinstance(result, bytes):
+                with open(temp_path, 'wb') as f:
+                    f.write(result)
+                # Register for cleanup
+                atexit.register(lambda: os.unlink(temp_path) if os.path.exists(temp_path) else None)
+                return temp_path, "Speech generated successfully"
+
+            # If we got a path back (stream=False was used), just return it
+            return result, "Speech generated successfully"
+
+        except Exception as e:
+            logger.error(f"Error in speech generation: {str(e)}")
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.unlink(temp_path)
+            return None, f"Error generating speech: {str(e)}"
+
 
 # Create the transcriber instance with the default API key
 transcriber = SpacesTranscriber(DEFAULT_API_KEY)
@@ -443,20 +493,34 @@ def create_interface():
                     info="Select language or 'auto' for automatic detection"
                 )
 
-                # File upload section for memory files (NEW)
+                # TTS voice selection
+                voice_selector = gr.Dropdown(
+                    choices=transcriber.config.tts_voices,
+                    value="alloy",
+                    label="TTS Voice",
+                    info="Select voice for text-to-speech"
+                )
+
+                # Auto-speak option
+                auto_speak = gr.Checkbox(
+                    label="Auto-speak analysis",
+                    value=True,
+                    info="Automatically generate speech for analysis results"
+                )
+
+                # File upload section for memory files
                 with gr.Group():
                     gr.Markdown("### Upload Files to Memory")
                     memory_files_upload = gr.File(
                         label="Upload Files",
                         file_count="multiple",
-                        type="filepath",  # Correct type
+                        type="filepath",
                         file_types=[".txt", ".pdf", ".docx", ".jpg", ".png", ".csv", ".xls", ".xlsx"]
-                        # Remove the file_types parameter completely to accept all files
                     )
                     upload_memory_files_btn = gr.Button("Save to Memory Files", variant="secondary")
                     memory_upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
 
-                # Display uploaded files (NEW)
+                # Display uploaded files
                 with gr.Accordion("Uploaded Files", open=True):
                     uploaded_files_display = gr.Markdown("No files have been uploaded yet.")
                     refresh_files_btn = gr.Button("Refresh Files List", variant="secondary")
@@ -547,6 +611,14 @@ def create_interface():
                     interactive=True
                 )
 
+                # TTS playback and control
+                speak_analysis_btn = gr.Button("🔊 Speak Analysis", variant="secondary")
+                tts_audio = gr.Audio(
+                    label="Analysis Audio",
+                    type="filepath",
+                    interactive=False
+                )
+
                 # Thinking process display
                 gr.Markdown("### Agent Thinking Process")
                 thinking_display = gr.Textbox(
@@ -597,7 +669,8 @@ def create_interface():
             # Initialize agent with selected model
             success = transcriber.initialize_agent_ui(api_key, model)
             if success:
-                conditional_debug_info(f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}")
+                conditional_debug_info(
+                    f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}")
                 return f"Agent Status: ✓ Initialized with {model} model"
             else:
                 return "Agent Status: ❌ Initialization failed"
@@ -613,7 +686,7 @@ def create_interface():
             # Validate audio data format
             if audio_data is None or not isinstance(audio_data, tuple) or len(audio_data) != 2:
                 logger.warning(f"Invalid audio data format: {type(audio_data)}")
-                return "Invalid or no audio recorded", None, "", 0, "", ""
+                return "Invalid or no audio recorded", None, "", 0, "", "", None
 
             # Extract audio data and sample rate
             audio_array, sample_rate = audio_data
@@ -637,6 +710,15 @@ def create_interface():
                 logger.warning("Failed to get language value, defaulting to 'auto'")
                 language_value = "auto"
 
+            # Get TTS settings
+            try:
+                auto_speak_value = auto_speak.value
+                voice_value = voice_selector.value
+            except:
+                logger.warning("Failed to get TTS settings, using defaults")
+                auto_speak_value = False
+                voice_value = "alloy"
+
             # Call transcriber
             try:
                 result = transcriber.handle_recording(
@@ -652,6 +734,7 @@ def create_interface():
                 # Default values in case analysis fails
                 analysis_result = ""
                 thinking_process = ""
+                tts_audio_path = None
 
                 # Automatically analyze if enabled
                 if auto_analyze_value and transcription and not transcription.startswith("Error"):
@@ -660,21 +743,30 @@ def create_interface():
                         # Add to agent memory
                         transcriber.add_to_agent_memory(transcription, analysis_result)
                         status_msg += " and analyzed"
+
+                        # Generate speech if auto-speak is enabled
+                        if auto_speak_value:
+                            tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result,
+                                                                                               voice_value)
+                            if tts_audio_path:
+                                status_msg += " with speech"
+                            else:
+                                status_msg += f" (speech generation failed: {tts_status})"
                     except Exception as e:
                         logger.error(f"Error analyzing transcription: {e}")
                         analysis_result = f"Analysis error: {str(e)}"
                         thinking_process = ""
 
-                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process
+                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error in handle_recording_wrapper: {str(e)}")
-                return f"Error processing recording: {str(e)}", None, "", 0, "", ""
+                return f"Error processing recording: {str(e)}", None, "", 0, "", "", None
 
         audio_recorder.stop_recording(
             fn=handle_recording_with_analysis,
-            inputs=[audio_recorder],
+            inputs=[audio_recorder],  # Only the audio recorder data is passed
             outputs=[status_msg, audio_playback, transcription_output, current_duration, analysis_output,
-                     thinking_display]
+                     thinking_display, tts_audio]
         ).then(
             fn=update_recording_info,
             inputs=[current_duration],
@@ -684,17 +776,26 @@ def create_interface():
         # Process uploaded audio with automatic analysis
         def process_uploaded_audio_with_analysis(audio_path, language, api_key):
             if not audio_path:
-                return "No file uploaded", "", "", ""
+                return "No file uploaded", "", "", "", None
+
+            # Get TTS settings
+            try:
+                auto_speak_value = auto_speak.value
+                voice_value = voice_selector.value
+            except:
+                logger.warning("Failed to get TTS settings, using defaults")
+                auto_speak_value = False
+                voice_value = "alloy"
 
             try:
                 # Process the uploaded file
                 logger.info(f"Processing uploaded audio: {audio_path}")
                 processed_path, status_msg, duration = transcriber.audio_processor.process_uploaded_file(audio_path)
                 if not processed_path:
-                    return status_msg, "", "", ""
+                    return status_msg, "", "", "", None
                 conditional_debug_info(f"- Result: {processed_path}, {status_msg}, {duration:.2f}s")
 
-                logger.info(f"Transcrbing audio file: {processed_path}, duration: {duration:.2f}s")
+                logger.info(f"Transcribing audio file: {processed_path}, duration: {duration:.2f}s")
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
                 conditional_debug_info(f"- Transcription: {transcription}")
@@ -702,6 +803,8 @@ def create_interface():
                 # Analyze
                 analysis_result = ""
                 thinking_process = ""
+                tts_audio_path = None
+
                 if transcription and not transcription.startswith("Error"):
                     analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
                     conditional_debug_info(f"- Analysis: {analysis_result}")
@@ -709,17 +812,24 @@ def create_interface():
                     # Add to agent memory
                     transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                conditional_debug_info(f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
-                return status_msg, transcription or "", analysis_result, thinking_process
+                    # Generate speech if auto-speak is enabled
+                    if auto_speak_value:
+                        tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                        if not tts_audio_path:
+                            status_msg += f" (speech generation failed: {tts_status})"
+
+                conditional_debug_info(
+                    f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
+                return status_msg, transcription or "", analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
                 conditional_debug_info(traceback.format_exc())
-                return f"Error processing file: {str(e)}", "", "", ""
+                return f"Error processing file: {str(e)}", "", "", "", None
 
         upload_transcribe_btn.click(
             fn=process_uploaded_audio_with_analysis,
             inputs=[audio_upload, language_selector, api_key_input],
-            outputs=[upload_status, transcription_output, analysis_output, thinking_display]
+            outputs=[upload_status, transcription_output, analysis_output, thinking_display, tts_audio]
         )
 
         # Process source file upload
@@ -737,7 +847,16 @@ def create_interface():
         # Analyze text input
         def analyze_text_input(text, source_file):
             if not text:
-                return "No text provided for analysis", "", ""
+                return "No text provided for analysis", "", "", None
+
+            # Get TTS settings
+            try:
+                auto_speak_value = auto_speak.value
+                voice_value = voice_selector.value
+            except:
+                logger.warning("Failed to get TTS settings, using defaults")
+                auto_speak_value = False
+                voice_value = "alloy"
 
             try:
                 # Analyze with optional source file
@@ -746,16 +865,23 @@ def create_interface():
                 # Add to agent memory
                 transcriber.add_to_agent_memory(text, analysis_result)
 
-                return "Text analysis completed", analysis_result, thinking_process
+                # Generate speech if auto-speak is enabled
+                tts_audio_path = None
+                if auto_speak_value:
+                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    if not tts_audio_path:
+                        return f"Text analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
+
+                return "Text analysis completed", analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error analyzing text: {str(e)}")
                 conditional_debug_info(traceback.format_exc())
-                return f"Error analyzing text: {str(e)}", "", ""
+                return f"Error analyzing text: {str(e)}", "", "", None
 
         analyze_text_btn.click(
             fn=analyze_text_input,
             inputs=[text_input, source_file_path],
-            outputs=[status_msg, analysis_output, thinking_display]
+            outputs=[status_msg, analysis_output, thinking_display, tts_audio]
         ).then(
             fn=lambda: update_memory_display(),
             inputs=[],
@@ -765,7 +891,16 @@ def create_interface():
         # Analyze transcription
         def analyze_current_transcription(transcription, source_file):
             if not transcription:
-                return "No transcription to analyze", "", ""
+                return "No transcription to analyze", "", "", None
+
+            # Get TTS settings
+            try:
+                auto_speak_value = auto_speak.value
+                voice_value = voice_selector.value
+            except:
+                logger.warning("Failed to get TTS settings, using defaults")
+                auto_speak_value = False
+                voice_value = "alloy"
 
             try:
                 analysis_result, thinking_process = transcriber.analyze_transcription(transcription, source_file)
@@ -773,22 +908,47 @@ def create_interface():
                 # Add to agent memory
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                return "Analysis completed", analysis_result, thinking_process
+                # Generate speech if auto-speak is enabled
+                tts_audio_path = None
+                if auto_speak_value:
+                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    if not tts_audio_path:
+                        return f"Analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
+
+                return "Analysis completed", analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error in analyze_transcription: {str(e)}")
-                return f"Analysis error: {str(e)}", "", ""
+                return f"Analysis error: {str(e)}", "", "", None
 
         analyze_btn.click(
             fn=analyze_current_transcription,
             inputs=[transcription_output, source_file_path],
-            outputs=[status_msg, analysis_output, thinking_display]
+            outputs=[status_msg, analysis_output, thinking_display, tts_audio]
         ).then(
             fn=lambda: update_memory_display(),
             inputs=[],
             outputs=[memory_display]
         )
 
-        # Handle file uploads to memory_files (NEW)
+        # Speech analysis
+        def speak_analysis(analysis_text, voice):
+            if not analysis_text:
+                return "No analysis to speak", None
+
+            try:
+                audio_path, status = transcriber.generate_speech_from_text(analysis_text, voice)
+                return status, audio_path
+            except Exception as e:
+                logger.error(f"Error in speech generation: {str(e)}")
+                return f"Speech generation error: {str(e)}", None
+
+        speak_analysis_btn.click(
+            fn=speak_analysis,
+            inputs=[analysis_output, voice_selector],
+            outputs=[status_msg, tts_audio]
+        )
+
+        # Handle file uploads to memory_files
         def save_to_memory_files(file_objs):
             if not file_objs:
                 return "No files uploaded"
@@ -814,7 +974,7 @@ def create_interface():
             else:
                 return "No files were saved"
 
-        # List all files in memory_files directory (NEW)
+        # List all files in memory_files directory
         def list_memory_files():
             try:
                 files = list(transcriber.config.memory_files_dir.glob("*.*"))
@@ -831,7 +991,7 @@ def create_interface():
                 logger.error(f"Error listing memory files: {e}")
                 return f"Error listing files: {str(e)}"
 
-        # Connect the file upload buttons to their functions (NEW)
+        # Connect the file upload buttons to their functions
         upload_memory_files_btn.click(
             fn=save_to_memory_files,
             inputs=[memory_files_upload],
