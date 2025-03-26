@@ -70,8 +70,8 @@ def create_agent(model_name="o3-mini", target_language="eng"):
             if isinstance(message, AIMessage):
                 # Extract the content from the AI message
                 response_content = message.content
-                conditional_debug_info(f"\n generate_summary: Response content: {response_content}\n")
-                # conditional_debug_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
+                # conditional_debug_info(f"\n generate_summary: Response content: {response_content}\n")
+                conditional_debug_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
 
                 # Generate a structured summary
                 summary_message = summary_llm.invoke(
@@ -104,7 +104,7 @@ def create_agent(model_name="o3-mini", target_language="eng"):
     workflow.add_edge("tools", 'agent')
     workflow.add_edge("answer_summary", END)
 
-    logger.info(f"Agent created with model: {model_name}")
+    logger.info(f"Agent created with model: {model_name}, language: {target_language}")
 
     # Compile the graph
     return workflow.compile()
