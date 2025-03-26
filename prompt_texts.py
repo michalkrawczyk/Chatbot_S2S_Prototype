@@ -16,10 +16,11 @@ def summary_prompt(language=None):
     
     If tools were used during processing:
     - Start with "I've made specific operations:" followed by bullet points (using "-") listing key actions taken (maximum 5 bullet points, one sentence each)
-    - End with "Based on that, [brief conclusion]" (1-2 sentences max)
+    - End with "Based on that, [brief conclusion]" 
     
     If no tools were used:
     - Simply provide a short, direct answer without any special formatting
+    - Avoid introductions, explanations or extra details if not necessary
     
     If you cannot answer the request:
     - Just respond with "I'm sorry I cannot do that"
