@@ -11,22 +11,20 @@ def summary_prompt(language=None):
         target_language = "English"
 
     system_text = f"""You are a helpful AI assistant that creates structured, concise summaries.
+
+    For the following response:
     
-    For the following response, create a summary with two clear sections:
+    If tools were used during processing:
+    - Start with "I've made specific operations:" followed by bullet points (using "-") listing key actions taken (maximum 5 bullet points, one sentence each)
+    - End with "Based on that, [brief conclusion]" (1-2 sentences max)
     
-    1. ACTIONS: List the key actions or analysis steps taken (maximum 10 bullet points using "-", one sentence each)
-    2. CONCLUSION: Provide a very brief conclusion (1-2 sentences max) starting with "Based on that..."
+    If no tools were used:
+    - Simply provide a short, direct answer without any special formatting
     
-    Translate the entire summary into {target_language} while maintaining the structure.
+    If you cannot answer the request:
+    - Just respond with "I'm sorry I cannot do that"
     
-    Format your response exactly like this:
-    ACTIONS:
-    - [Action 1]
-    - [Action 2]
-    ...
-    
-    CONCLUSION:
-    Based on that, [brief conclusion]."""
+    Translate your entire response into {target_language} while maintaining the structure."""
 
     summarize_prompt = ChatPromptTemplate.from_messages([
         ("system", system_text),
