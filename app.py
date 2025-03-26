@@ -574,10 +574,6 @@ def create_interface():
                             lines=10,
                             max_lines=30
                         )
-                        source_file_upload = gr.File(
-                            label="Upload Source File (Optional)",
-                            file_types=[".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".csv"]
-                        )
                         analyze_text_btn = gr.Button("Analyze Text", variant="primary")
 
                 # Status info
@@ -835,20 +831,8 @@ def create_interface():
             outputs=[upload_status, transcription_output, analysis_output, thinking_display, tts_audio]
         )
 
-        # Process source file upload
-        def handle_source_file(file_obj):
-            if file_obj is None:
-                return None, "No source file selected"
-            return file_obj.name, f"Source file loaded: {os.path.basename(file_obj.name)}"
-
-        source_file_upload.change(
-            fn=handle_source_file,
-            inputs=[source_file_upload],
-            outputs=[source_file_path, status_msg]
-        )
-
         # Analyze text input
-        def analyze_text_input(text, source_file):
+        def analyze_text_input(text):
             if not text:
                 return "No text provided for analysis", "", "", None
 
@@ -862,8 +846,8 @@ def create_interface():
                 voice_value = "alloy"
 
             try:
-                # Analyze with optional source file
-                analysis_result, thinking_process = transcriber.analyze_transcription(text, source_file)
+                # Analyze text (no source file)
+                analysis_result, thinking_process = transcriber.analyze_transcription(text)
 
                 # Add to agent memory
                 transcriber.add_to_agent_memory(text, analysis_result)
@@ -883,7 +867,7 @@ def create_interface():
 
         analyze_text_btn.click(
             fn=analyze_text_input,
-            inputs=[text_input, source_file_path],
+            inputs=[text_input],
             outputs=[status_msg, analysis_output, thinking_display, tts_audio]
         ).then(
             fn=lambda: update_memory_display(),
@@ -892,7 +876,7 @@ def create_interface():
         )
 
         # Analyze transcription
-        def analyze_current_transcription(transcription, source_file):
+        def analyze_current_transcription(transcription):
             if not transcription:
                 return "No transcription to analyze", "", "", None
 
@@ -906,7 +890,7 @@ def create_interface():
                 voice_value = "alloy"
 
             try:
-                analysis_result, thinking_process = transcriber.analyze_transcription(transcription, source_file)
+                analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
 
                 # Add to agent memory
                 transcriber.add_to_agent_memory(transcription, analysis_result)
@@ -925,7 +909,7 @@ def create_interface():
 
         analyze_btn.click(
             fn=analyze_current_transcription,
-            inputs=[transcription_output, source_file_path],
+            inputs=[transcription_output],
             outputs=[status_msg, analysis_output, thinking_display, tts_audio]
         ).then(
             fn=lambda: update_memory_display(),
