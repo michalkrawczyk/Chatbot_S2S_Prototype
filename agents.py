@@ -71,7 +71,7 @@ def create_agent(model_name="o3-mini", target_language="eng"):
                 # Extract the content from the AI message
                 response_content = message.content
                 conditional_debug_info(f"\n generate_summary: Response content: {response_content}\n")
-                conditional_debug_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
+                # conditional_debug_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
 
                 # Generate a structured summary
                 summary_message = summary_llm.invoke(
@@ -80,7 +80,7 @@ def create_agent(model_name="o3-mini", target_language="eng"):
                 conditional_debug_info(f"generate_summary: Summary message: {summary_message}\n")
 
                 # Update the state with the summary
-                return {"summary": summary_message.content}
+                return {"messages": state["messages"] + [summary_message]}
 
         # If no AI message found
         return {"summary": f"No response to summarize. (in {target_language})"}
