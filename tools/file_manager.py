@@ -23,8 +23,8 @@ class FileSearchInput(BaseModel):
 
 class FilesystemTool(BaseTool):
     """Tool for interacting with files in the memory_files directory."""
-    name = "filesystem_tool"
-    description = "List files in memory_files directory and search for specific files"
+    name: str = "filesystem_tool"
+    description: str = "List files in memory_files directory and search for specific files"
     memory_dir: str = "memory_files"
     memory_index_file: str = "memory_files/index.json"
 
