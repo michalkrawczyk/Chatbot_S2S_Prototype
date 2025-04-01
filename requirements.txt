@@ -11,3 +11,4 @@ pydantic
 gradio>=3.40.1
 langgraph==0.3.8
 gspread==6.1.3
+pandas>=1.3.0
