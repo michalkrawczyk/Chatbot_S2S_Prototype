@@ -9,7 +9,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
-from prompt_texts import summary_prompt
+from prompt_texts import summary_prompt, main_system_prompt
+from tools import DEFINED_TOOLS_DICT
 
 
 # Define agent components
@@ -31,11 +32,8 @@ def create_agent(model_name="o3-mini", target_language="eng"):
     """Create an agent with the specified model."""
     llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
     # Define the system prompt
-    system_prompt = """You are a helpful AI assistant that analyzes transcribed text.
-    When presented with transcribed text, analyze it thoroughly and provide insights.
-    Use available tools when appropriate to enhance your analysis.
-    When referencing information from memory, clearly indicate this in your response.
-    """
+    system_prompt = main_system_prompt()
+
 
     summary_llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
     summary_llm_prompt = summary_prompt(target_language)
@@ -58,11 +56,59 @@ def create_agent(model_name="o3-mini", target_language="eng"):
         response = llm.invoke(messages, config=config)
         return {"messages": state["messages"] + [response]}
 
-    # Tool calling logic would go here in a more complex setup
     def call_tools(state):
-        """Function to handle tool calling - placeholder for now"""
-        # This is a simplified version - would implement actual tool calling logic
-        return state
+        """Function to handle tool calling"""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if not last_message.tool_calls:
+            return state
+
+        results = []
+
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call.name
+            tool_args = tool_call.args
+            tool_id = tool_call.id
+
+            # Look up the tool in our dictionary
+            if tool_name in DEFINED_TOOLS_DICT:
+                tool = DEFINED_TOOLS_DICT[tool_name]
+                try:
+                    # Parse tool arguments if provided
+                    if isinstance(tool_args, str):
+                        import json
+                        try:
+                            tool_args = json.loads(tool_args)
+                        except:
+                            pass  # Use as-is if not valid JSON
+
+                    # Call the tool with the provided arguments
+                    result = tool.func(tool_args)
+
+                    # Create a tool response message
+                    tool_response = AIMessage(
+                        content=str(result),
+                        tool_call_id=tool_id
+                    )
+                    results.append(tool_response)
+                except Exception as e:
+                    error_message = f"Error executing tool {tool_name}: {str(e)}"
+                    tool_response = AIMessage(
+                        content=error_message,
+                        tool_call_id=tool_id
+                    )
+                    results.append(tool_response)
+            else:
+                # Tool not found
+                tool_response = AIMessage(
+                    content=f"Tool '{tool_name}' not found",
+                    tool_call_id=tool_id
+                )
+                results.append(tool_response)
+
+        # Update state with tool responses
+        return {"messages": state["messages"] + results}
 
     def generate_summary(state):
         # Get the last AI message

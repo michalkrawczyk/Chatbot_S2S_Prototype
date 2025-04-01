@@ -2,6 +2,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from openai_client import SUPPORT_LANGUAGES_CAST_DICT
 from utils import logger
+from tools import DEFINED_TOOLS
 
 
 def summary_prompt(language=None):
@@ -32,3 +33,34 @@ def summary_prompt(language=None):
         ("human", "Response to summarize: {response}")])
 
     return summarize_prompt
+
+def main_system_prompt():
+    system_prompt = """You are an analytical assistant specialized in extracting key insights from transcribed text.
+
+CAPABILITIES:
+- Conduct thorough analysis of transcribed text
+- Identify patterns, themes, and notable information
+- Use data tools to enhance analysis when relevant
+- Reference memory clearly when utilizing past information
+
+APPROACH TO ANALYSIS:
+1. First understand the core content and context
+2. Consider what tools would provide valuable analytical insights
+3. Use tools strategically to validate observations or discover patterns
+4. Synthesize findings into concise, insight-rich responses
+
+RESPONSE GUIDELINES:
+- Be direct and concise - prioritize insights over wordiness
+- Structure responses with clear sections and bullet points
+- When using data from tools, explicitly mention the source
+- Focus on unexpected or non-obvious findings
+- Quantify observations whenever possible
+
+Available tools:
+"""
+
+    # Add tool descriptions to the system prompt
+    for tool in DEFINED_TOOLS:
+        system_prompt += f"\n- {tool.name}: {tool.description}"
+
+    return system_prompt
