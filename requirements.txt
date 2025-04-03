@@ -6,7 +6,7 @@ langchain-core==0.3.41
 langchain-experimental==0.3.4
 langchain-openai==0.3.7
 pyaudio
-#pydantic
+pydantic==1.10.*
 #gradio-client
 langgraph==0.3.8
 gspread==6.1.3
