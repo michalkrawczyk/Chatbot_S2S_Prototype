@@ -17,6 +17,25 @@ from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
 import traceback
 
+
+
+try:
+    #gradio
+    logger.info("Gradio version: " + str(gr.__version__))
+
+    import pyaudio
+    logger.info("PyAudio version: " + str(pyaudio.__version__))
+    import pydantic
+    logger.info("Pydantic version: " + str(pydantic.__version__))
+    import gspread
+    logger.info("Gspread version: " + str(gspread.get_gspread_version()))
+except ImportError as e:
+    logger.error(f"Import error: {e}")
+    logger.info("Some dependencies are missing. Please install them to use all features.")
+
+
+
+
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
