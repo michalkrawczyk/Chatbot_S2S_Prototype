@@ -1064,10 +1064,10 @@ if __name__ == "__main__":
     try:
         # gradio
         logger.info("Gradio version: " + str(gr.__version__))
-
-        import pyaudio
-
-        logger.info("PyAudio version: " + str(pyaudio.__version__))
+        #
+        # import pyaudio
+        #
+        # logger.info("PyAudio version: " + str(pyaudio.__version__))
         import pydantic
 
         logger.info("Pydantic version: " + str(pydantic.__version__))
