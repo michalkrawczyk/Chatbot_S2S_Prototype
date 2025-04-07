@@ -10,4 +10,3 @@ pydantic
 #streamlit
 gradio>=3.40.1
 langgraph==0.3.8
-gspread

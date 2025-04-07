@@ -1071,9 +1071,7 @@ if __name__ == "__main__":
         import pydantic
 
         logger.info("Pydantic version: " + str(pydantic.__version__))
-        import gspread
 
-        logger.info("Gspread version: " + str(gspread.__version__))
     except ImportError as e:
         logger.error(f"Import error: {e}")
         logger.info("Some dependencies are missing. Please install them to use all features.")
