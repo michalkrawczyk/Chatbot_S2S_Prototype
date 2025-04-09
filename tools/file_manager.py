@@ -8,7 +8,7 @@ import csv
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from config import FILE_MEMORY_DIR, DATA_FILES_DIR, SUPPORTED_FILETYPES
-from tool_prompts_texts import file_summary_prompt
+from tools.tool_prompts_texts import file_summary_prompt
 
 
 class FileInfo(BaseModel):
