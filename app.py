@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from agents import AgentLLM
+from config import SUPPORTED_FILETYPES
 from utils import logger, conditional_debug_info
 from audio import AudioProcessor
 from openai_client import OpenAIClient, SUPPORT_LANGUAGES
@@ -520,7 +521,7 @@ def create_interface():
                         label="Upload Files",
                         file_count="multiple",
                         type="filepath",
-                        file_types=[".txt", ".pdf", ".docx", ".jpg", ".png", ".csv", ".xls", ".xlsx"]
+                        file_types=SUPPORTED_FILETYPES
                     )
                     upload_memory_files_btn = gr.Button("Save to Memory Files", variant="secondary")
                     memory_upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
