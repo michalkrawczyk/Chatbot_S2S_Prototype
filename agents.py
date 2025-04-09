@@ -20,22 +20,21 @@ class AgentState(TypedDict):
     memory: List[Dict[str, Any]]
 
 
-def should_continue(state: AgentState) -> Literal["tools", "answer_summary"]:
+def should_continue_tools(state: AgentState, end_state: str = "answer_summary") -> Literal["tools", "answer_summary"]:
     messages = state['messages']
     last_message = messages[-1] # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
         return "tools" # Otherwise, we route to the "answer_summary" node
-    return "answer_summary"
+    return end_state
 
 
-def create_agent(model_name="o3-mini", target_language="eng"):
+def create_main_agent(llm, target_language="eng", summary_llm = None):
     """Create an agent with the specified model."""
-    llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
+
     # Define the system prompt
     system_prompt = main_system_prompt()
+    summary_llm = summary_llm or llm
 
-
-    summary_llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
     summary_llm_prompt = summary_prompt(target_language)
 
 
@@ -144,32 +143,35 @@ def create_agent(model_name="o3-mini", target_language="eng"):
     workflow.add_conditional_edges(
         # First, we define the start node. We use 'agent'. # This means these are the edges taken after the 'agent' node is called.
         "agent",  # Next, we pass in the function that will determine which node is called next.
-        should_continue,
+        should_continue_tools,
     )
 
     workflow.add_edge("tools", 'agent')
     workflow.add_edge("answer_summary", END)
 
-    logger.info(f"Agent created with model: {model_name}, language: {target_language}")
-
     # Compile the graph
     return workflow.compile()
 
 
-# Create the agent - will be initialized when needed
-# agent_executor = None
-
 class AgentLLM:
     _agent_executor = None
     _model_name = ""
+    _llm = None
 
     def initialize_agent(self, api_key, model_name="o3-mini", target_language="eng"):
         """Initialize the agent with the provided API key."""
+        if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o"]:
+            logger.warning(f"Unsupported model name: {model_name}.")
+            # TODO: Add later support for other models
+            return False
+
+        self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
 
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
-            self._agent_executor = create_agent(model_name=model_name, target_language=target_language)
+            self._agent_executor = create_main_agent(llm=self._llm, target_language=target_language)
             self._model_name = model_name
+            logger.info(f"Main Agent created with model: {model_name}, language: {target_language}")
             return True
         return False
 
@@ -216,3 +218,7 @@ class AgentLLM:
     @property
     def get_model_name(self):
         return self._model_name
+
+    @property
+    def get_llm(self):
+        return self._llm
