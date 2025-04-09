@@ -8,9 +8,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
+
 from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from prompt_texts import summary_prompt, main_system_prompt
-from tools import DEFINED_TOOLS_DICT
+from tools import DEFINED_TOOLS_DICT,DEFINED_TOOL_NODE
 
 
 # Define agent components
@@ -169,6 +170,7 @@ class AgentLLM:
             os.environ["OPENAI_API_KEY"] = api_key
             self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(
                 model=model_name)
+            self._llm.bind_tools(DEFINED_TOOL_NODE)
             self._agent_executor = create_main_agent(llm=self._llm, target_language=target_language)
             self._model_name = model_name
             logger.info(f"Main Agent created with model: {model_name}, language: {target_language}")
