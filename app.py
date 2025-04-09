@@ -521,7 +521,7 @@ def create_interface():
                         label="Upload Files",
                         file_count="multiple",
                         type="filepath",
-                        file_types=SUPPORTED_FILETYPES
+                        file_types=list(SUPPORTED_FILETYPES)
                     )
                     upload_memory_files_btn = gr.Button("Save to Memory Files", variant="secondary")
                     memory_upload_status = gr.Textbox(label="Upload Status", value="", interactive=False)
