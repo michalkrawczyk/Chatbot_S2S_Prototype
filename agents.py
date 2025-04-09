@@ -165,10 +165,10 @@ class AgentLLM:
             # TODO: Add later support for other models
             return False
 
-        self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(model=model_name)
-
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
+            self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(
+                model=model_name)
             self._agent_executor = create_main_agent(llm=self._llm, target_language=target_language)
             self._model_name = model_name
             logger.info(f"Main Agent created with model: {model_name}, language: {target_language}")
