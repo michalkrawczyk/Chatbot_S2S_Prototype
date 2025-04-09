@@ -1,15 +1,33 @@
-# from langchain.agents import Tool
+from langchain.tools import Tool
+from langchain_core.tools import tool
 # from langchain.tools import BaseTool
 #
 # # Import the tools from your other file
 # from tools.datasheet_manager import DataFrameTool, GoogleSheetInput, DescribeDataInput, FilterDataInput, AggregateDataInput, describe_data, filter_data, aggregate_data
-# from tools.file_manager import FilesystemTool
+from tools.file_manager import FileSystemManager
 #
-# # Create the filesystem tool instance
-# filesystem_tool = FilesystemTool()
+# Create the filesystem tool instance
+filesystem_manager = FileSystemManager()
+
+@tool
+def get_file_list(file_name: str = "") -> str:
+    """
+    List available data files in the memory_files directory.
+    """
+    return filesystem_manager.list_files
+
+@tool
+def get_file_content(file_name: str) -> str:
+    """
+    Load a file from the memory_files directory.
+    """
+    return filesystem_manager.read_file(file_name) #TODO: switch later for detailed view
+
 #
 # # Define the tools list for LangChain
 DEFINED_TOOLS = [
+    get_file_list,
+    get_file_content,
     # Tool(
     #     name="LoadData",
     #     description="Load data from a CSV, Excel file, or Google Sheet URL. Provide the file path or URL as input.",
@@ -40,11 +58,6 @@ DEFINED_TOOLS = [
     #     func=lambda input_data: aggregate_data(AggregateDataInput(**input_data))
     # ),
     #
-    # Tool(
-    #     name="FileSystem",
-    #     description="List, search, and load files from the memory_files directory. Pass a filename to load it, or a search term to find files. Leave empty to list all files.",
-    #     func=filesystem_tool._run
-    # )
 ]
 #
 DEFINED_TOOLS_DICT = {tool.name: tool for tool in DEFINED_TOOLS}

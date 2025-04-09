@@ -7,6 +7,9 @@ langchain-experimental==0.3.4
 langchain-openai==0.3.7
 pyaudio
 pydantic
+#pydantic==2.11.*
 #streamlit
-gradio>=3.40.1
+gradio>=5.23.3
+#gradio==5.23.3
 langgraph==0.3.8
+pandas
