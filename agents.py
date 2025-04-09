@@ -173,7 +173,7 @@ class AgentLLM:
                 model=model_name)
 
             self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOL_NODE)
-            self._agent_executor = create_main_agent(llm=self._llm, target_language=target_language)
+            self._agent_executor = create_main_agent(llm=self._llm_with_tools, target_language=target_language, summary_llm=self._llm)
             self._model_name = model_name
             logger.info(f"Main Agent created with model: {model_name}, language: {target_language}")
             return True
