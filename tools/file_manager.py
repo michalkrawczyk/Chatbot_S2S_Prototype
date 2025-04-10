@@ -215,29 +215,32 @@ class FileSystemManager:
         Returns:
             String representation of the file content
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File {file_path} does not exist")
+        corrected_file_path = os.path.join(self.memory_dir, file_path) if not self.memory_dir in file_path else file_path
 
-        file_ext = os.path.splitext(file_path)[1].lower()
+        if not os.path.exists(corrected_file_path):
+            raise FileNotFoundError(f"File {corrected_file_path} does not exist")
+
+        file_ext = os.path.splitext(corrected_file_path)[1].lower()
+
 
         try:
             if file_ext not in SUPPORTED_FILETYPES:
                 raise ValueError(f"Unsupported file format: {file_ext}. Supported formats: {SUPPORTED_FILETYPES}")
             # Text files
             if file_ext in ['.txt', '.md']:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(corrected_file_path, 'r', encoding='utf-8') as f:
                     return f.read()
 
             # CSV files
             elif file_ext == '.csv':
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(corrected_file_path, 'r', encoding='utf-8') as f:
                     csv_reader = csv.reader(f)
                     # TODO: consider using pandas for better handling
                     return '\n'.join([','.join(row) for row in csv_reader])
 
             # Excel files
             elif file_ext in ['.xlsx', '.xls']:
-                df = pd.read_excel(file_path)
+                df = pd.read_excel(corrected_file_path)
                 return df.to_string()
 
             # Word documents
@@ -252,13 +255,13 @@ class FileSystemManager:
             # Default fallback - try to read as text
             else:
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(corrected_file_path, 'r', encoding='utf-8') as f:
                         return f.read()
                 except UnicodeDecodeError:
-                    return f"[Binary file: {os.path.basename(file_path)}]"
+                    return f"[Binary file: {os.path.basename(corrected_file_path)}]"
 
         except Exception as e:
-            return f"Error reading file {os.path.basename(file_path)}: {str(e)}"
+            return f"Error reading file {os.path.basename(corrected_file_path)}: {str(e)}"
 
 
     def _get_timestamp(self):
