@@ -67,9 +67,16 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         results = []
 
         for tool_call in last_message.tool_calls:
-            tool_name = tool_call.name
-            tool_args = tool_call.args
-            tool_id = tool_call.id
+            # Check if tool_call is a dictionary
+            if isinstance(tool_call, dict):
+                tool_name = tool_call.get("name")
+                tool_args = tool_call.get("args")
+                tool_id = tool_call.get("id")
+            else:
+                # Assume it's an object with attributes
+                tool_name = tool_call.name
+                tool_args = tool_call.args
+                tool_id = tool_call.id
 
             # Look up the tool in our dictionary
             if tool_name in DEFINED_TOOLS_DICT:
