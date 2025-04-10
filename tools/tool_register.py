@@ -11,11 +11,11 @@ from tools.file_manager import FileSystemManager
 filesystem_manager = FileSystemManager()
 
 @tool
-def get_file_list(file_name: str = "") -> str:
+def get_file_list() -> str:
     """
     List available data files in the memory_files directory.
     """
-    return filesystem_manager.list_files
+    return filesystem_manager.list_files()
 
 @tool
 def get_file_content(file_name: str) -> str:
