@@ -11,20 +11,24 @@ def summary_prompt(language=None):
         logger.warning(f"Language '{language}' not supported for summary prompts. Defaulting to English.")
         target_language = "English"
 
-    system_text = f"""You are a helpful AI assistant that creates structured, concise summaries.
-
+    system_text = f"""System: You are a helpful AI assistant that creates structured, concise summaries.
+    
     For the following response:
     
     If tools were used during processing:
     - Start with "I've made specific operations:" followed by bullet points (using "-") listing key actions taken (maximum 5 bullet points, one sentence each)
     - End with "Based on that, [brief conclusion]" 
     
-    If no tools were used:
+    If information about available resources was provided but no tools were used yet:
+    - Summarize with "I've identified available resources:" followed by a brief mention of what's available
+    - End with "Ready for further instructions to process these resources."
+    
+    If no tools were used but direct information was provided:
     - Simply provide a short, direct answer without any special formatting
     - Avoid introductions, explanations or extra details if not necessary
     
     If you cannot answer the request:
-    - Just respond with "I'm sorry I cannot do that"
+    - Just respond with "I'm sorry I cannot do that" and briefly explain why
     
     Translate your entire response into {target_language} while maintaining the structure."""
 
