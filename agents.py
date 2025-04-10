@@ -61,58 +61,83 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         messages = state["messages"]
         last_message = messages[-1]
 
-        if not last_message.tool_calls:
+        # Safely check for tool_calls
+        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
             return state
 
         results = []
 
+        # Debug the structure
+        conditional_debug_info(f"Tool calls structure: {type(last_message.tool_calls)}")
+        if last_message.tool_calls:
+            conditional_debug_info(f"First tool call structure: {type(last_message.tool_calls[0])}")
+
         for tool_call in last_message.tool_calls:
-            # Check if tool_call is a dictionary
-            if isinstance(tool_call, dict):
-                tool_name = tool_call.get("name")
-                tool_args = tool_call.get("args")
-                tool_id = tool_call.get("id")
-            else:
-                # Assume it's an object with attributes
-                tool_name = tool_call.name
-                tool_args = tool_call.args
-                tool_id = tool_call.id
+            try:
+                # Handle different possible structures
+                if isinstance(tool_call, dict):
+                    # OpenAI direct format
+                    if "function" in tool_call:
+                        tool_name = tool_call["function"]["name"]
+                        tool_args = tool_call["function"]["arguments"]
+                        tool_id = tool_call["id"]
+                    else:
+                        # Simple dict format
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args")
+                        tool_id = tool_call.get("id")
+                else:
+                    # Object format - try common patterns
+                    if hasattr(tool_call, "function"):
+                        # OpenAI-style object
+                        tool_name = tool_call.function.name
+                        tool_args = tool_call.function.arguments
+                        tool_id = tool_call.id
+                    else:
+                        # Direct attributes
+                        tool_name = tool_call.name
+                        tool_args = tool_call.args
+                        tool_id = tool_call.id
 
-            # Look up the tool in our dictionary
-            if tool_name in DEFINED_TOOLS_DICT:
-                tool = DEFINED_TOOLS_DICT[tool_name]
-                try:
-                    # Parse tool arguments if provided
-                    if isinstance(tool_args, str):
-                        import json
-                        try:
-                            tool_args = json.loads(tool_args)
-                        except:
-                            pass  # Use as-is if not valid JSON
+                conditional_debug_info(f"Processing tool: {tool_name} with args: {tool_args}")
 
-                    # Call the tool with the provided arguments
-                    result = tool.func(tool_args)
+                # Convert arguments from string to dict if needed
+                if isinstance(tool_args, str):
+                    import json
+                    try:
+                        tool_args = json.loads(tool_args)
+                    except json.JSONDecodeError:
+                        conditional_debug_info(f"Warning: Could not parse tool arguments as JSON: {tool_args}")
+                        # Keep as is if not valid JSON
 
-                    # Create a tool response message
-                    tool_response = AIMessage(
-                        content=str(result),
-                        tool_call_id=tool_id
-                    )
+                # Execute the tool
+                if tool_name in DEFINED_TOOLS_DICT:
+                    tool = DEFINED_TOOLS_DICT[tool_name]
+                    try:
+                        # Call the tool - adjust based on your tool's expected input format
+                        if isinstance(tool_args, dict):
+                            result = tool.func(**tool_args)
+                        else:
+                            result = tool.func(tool_args)
+
+                        tool_response = AIMessage(content=str(result), tool_call_id=tool_id)
+                        results.append(tool_response)
+                    except Exception as e:
+                        import traceback
+                        error_message = f"Error executing tool {tool_name}: {str(e)}\n{traceback.format_exc()}"
+                        conditional_debug_info(error_message)
+                        tool_response = AIMessage(content=f"Error executing tool {tool_name}: {str(e)}",
+                                                  tool_call_id=tool_id)
+                        results.append(tool_response)
+                else:
+                    tool_response = AIMessage(content=f"Tool '{tool_name}' not found", tool_call_id=tool_id)
                     results.append(tool_response)
-                except Exception as e:
-                    error_message = f"Error executing tool {tool_name}: {str(e)}"
-                    tool_response = AIMessage(
-                        content=error_message,
-                        tool_call_id=tool_id
-                    )
-                    results.append(tool_response)
-            else:
-                # Tool not found
-                tool_response = AIMessage(
-                    content=f"Tool '{tool_name}' not found",
-                    tool_call_id=tool_id
-                )
-                results.append(tool_response)
+
+            except Exception as e:
+                import traceback
+                conditional_debug_info(f"Error processing tool call: {str(e)}\n{traceback.format_exc()}")
+                # Create a generic error response if we can't even extract the tool details
+                results.append(AIMessage(content=f"Error processing tool call: {str(e)}"))
 
         # Update state with tool responses
         return {"messages": state["messages"] + results}
