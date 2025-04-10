@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 
 from config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
-from utils import logger, conditional_debug_info
+from utils import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT,DEFINED_TOOLS
 
@@ -53,7 +53,7 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
                     "agent_trace": AGENT_TRACE,
                     "verbose": AGENT_VERBOSE}
 
-        conditional_debug_info(f"call_model: Calling model with messages: {messages}")
+        conditional_logger_info(f"call_model: Calling model with messages: {messages}")
         response = llm.invoke(messages, config=config)
         return {"messages": state["messages"] + [response]}
 
@@ -163,13 +163,13 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
                 # Extract the content from the AI message
                 response_content = message.content
                 # conditional_debug_info(f"\n generate_summary: Response content: {response_content}\n")
-                conditional_debug_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
+                conditional_logger_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
 
                 # Generate a structured summary
                 summary_message = summary_llm.invoke(
                     summary_llm_prompt.format(response=response_content)
                 )
-                conditional_debug_info(f"generate_summary: Summary message: {summary_message}\n")
+                conditional_logger_info(f"generate_summary: Summary message: {summary_message}\n")
 
                 # Update the state with the summary
                 return {"messages": state["messages"] + [summary_message]}

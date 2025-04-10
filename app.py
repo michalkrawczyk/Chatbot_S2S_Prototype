@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 
 from agents import AgentLLM
-from config import SUPPORTED_FILETYPES
-from utils import logger, conditional_debug_info
+from config import SUPPORTED_FILETYPES, FILE_MEMORY_DIR
+from utils import logger, conditional_logger_info
 from audio import AudioProcessor
 from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
@@ -33,7 +33,7 @@ class SpacesConfig:
     def __init__(self):
         # Use temp directory for recordings to avoid filling Spaces storage
         self.temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
-        self.memory_files_dir = Path("memory_files")  # New directory for uploaded files
+        self.memory_files_dir = Path(FILE_MEMORY_DIR) # New directory for uploaded files
         self.max_recording_length_seconds = 300  # 5 minutes to avoid timeouts
         self.max_history_items = 5  # Limit history to save memory
         self.supported_languages = SUPPORT_LANGUAGES
@@ -672,7 +672,7 @@ def create_interface():
             success = transcriber.initialize_agent_ui(api_key, model, target_language=language_selector.value)
             #TODO: ADD agent reinitialization on language change
             if success:
-                conditional_debug_info(
+                conditional_logger_info(
                     f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}")
                 return f"Agent Status: ✓ Initialized with {model} model"
             else:
@@ -796,12 +796,12 @@ def create_interface():
                 processed_path, status_msg, duration = transcriber.audio_processor.process_uploaded_file(audio_path)
                 if not processed_path:
                     return status_msg, "", "", "", None
-                conditional_debug_info(f"- Result: {processed_path}, {status_msg}, {duration:.2f}s")
+                conditional_logger_info(f"- Result: {processed_path}, {status_msg}, {duration:.2f}s")
 
                 logger.info(f"Transcribing audio file: {processed_path}, duration: {duration:.2f}s")
                 # Transcribe
                 transcription = transcriber.transcribe_audio(processed_path, language, api_key)
-                conditional_debug_info(f"- Transcription: {transcription}")
+                conditional_logger_info(f"- Transcription: {transcription}")
 
                 # Analyze
                 analysis_result = ""
@@ -810,8 +810,8 @@ def create_interface():
 
                 if transcription and not transcription.startswith("Error"):
                     analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
-                    conditional_debug_info(f"- Analysis: {analysis_result}")
-                    conditional_debug_info(f"- Thinking: {thinking_process}")
+                    conditional_logger_info(f"- Analysis: {analysis_result}")
+                    conditional_logger_info(f"- Thinking: {thinking_process}")
                     # Add to agent memory
                     transcriber.add_to_agent_memory(transcription, analysis_result)
 
@@ -821,12 +821,12 @@ def create_interface():
                         if not tts_audio_path:
                             status_msg += f" (speech generation failed: {tts_status})"
 
-                conditional_debug_info(
+                conditional_logger_info(
                     f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
                 return status_msg, transcription or "", analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
-                conditional_debug_info(traceback.format_exc())
+                conditional_logger_info(traceback.format_exc())
                 return f"Error processing file: {str(e)}", "", "", "", None
 
         upload_transcribe_btn.click(
@@ -866,7 +866,7 @@ def create_interface():
                 return "Text analysis completed", analysis_result, thinking_process, tts_audio_path
             except Exception as e:
                 logger.error(f"Error analyzing text: {str(e)}")
-                conditional_debug_info(traceback.format_exc())
+                conditional_logger_info(traceback.format_exc())
                 return f"Error analyzing text: {str(e)}", "", "", None
 
         analyze_text_btn.click(
@@ -961,6 +961,7 @@ def create_interface():
                     logger.error(f"Error saving file {file_obj.name if file_obj else 'None'}: {e}")
 
             if saved_files:
+                conditional_logger_info(f"Saved files: {saved_files} in {transcriber.config.memory_files_dir}")
                 return f"Saved {len(saved_files)} files: {', '.join(saved_files)}"
             else:
                 return "No files were saved"

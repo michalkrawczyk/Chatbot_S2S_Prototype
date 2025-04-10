@@ -7,7 +7,7 @@ SUPPORTED_FILETYPES = (".txt", ".pdf", ".docx", ".jpg", ".png", ".csv", ".xls", 
 
 
 # Settings
-DEBUG_INFO = True
+ADDITIONAL_LOGGER_INFO = True
 RECURSION_LIMIT = 10
 AGENT_TRACE = True
 AGENT_VERBOSE = True

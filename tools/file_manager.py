@@ -9,6 +9,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from config import FILE_MEMORY_DIR, DATA_FILES_DIR, SUPPORTED_FILETYPES
 from tools.tool_prompts_texts import file_summary_prompt
+from utils import conditional_logger_info
 
 
 class FileInfo(BaseModel):
@@ -50,6 +51,7 @@ class FileSystemManager:
     def list_files(self) -> List[str]:
         """List all files in the memory directory."""
         files = os.listdir(self.memory_dir)
+        conditional_logger_info(f"Files in memory directory ({self.memory_dir}): {files}")
         return [os.path.join(self.memory_dir, f) for f in files if os.path.isfile(os.path.join(self.memory_dir, f)) and f.endswith(SUPPORTED_FILETYPES)]
 
     def update_file_info(self, llm_summarizer: Optional[BaseChatModel] = None) -> "FileSystemManager":
