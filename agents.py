@@ -61,83 +61,96 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         messages = state["messages"]
         last_message = messages[-1]
 
-        # Safely check for tool_calls
         if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
             return state
 
         results = []
 
-        # Debug the structure
-        conditional_debug_info(f"Tool calls structure: {type(last_message.tool_calls)}")
-        if last_message.tool_calls:
-            conditional_debug_info(f"First tool call structure: {type(last_message.tool_calls[0])}")
-
         for tool_call in last_message.tool_calls:
+            # Extract tool information - handle both object and dict forms
             try:
-                # Handle different possible structures
-                if isinstance(tool_call, dict):
-                    # OpenAI direct format
-                    if "function" in tool_call:
-                        tool_name = tool_call["function"]["name"]
-                        tool_args = tool_call["function"]["arguments"]
-                        tool_id = tool_call["id"]
+                if hasattr(tool_call, 'function'):
+                    # OpenAI format
+                    tool_name = tool_call.function.name
+                    tool_args = tool_call.function.arguments
+                    tool_id = tool_call.id
+                elif hasattr(tool_call, 'name'):
+                    # Direct attribute access
+                    tool_name = tool_call.name
+                    tool_args = tool_call.args
+                    tool_id = tool_call.id
+                elif isinstance(tool_call, dict):
+                    # Dictionary access
+                    if 'function' in tool_call:
+                        tool_name = tool_call['function']['name']
+                        tool_args = tool_call['function']['arguments']
+                        tool_id = tool_call['id']
                     else:
-                        # Simple dict format
-                        tool_name = tool_call.get("name")
-                        tool_args = tool_call.get("args")
-                        tool_id = tool_call.get("id")
+                        tool_name = tool_call.get('name')
+                        tool_args = tool_call.get('args')
+                        tool_id = tool_call.get('id')
                 else:
-                    # Object format - try common patterns
-                    if hasattr(tool_call, "function"):
-                        # OpenAI-style object
-                        tool_name = tool_call.function.name
-                        tool_args = tool_call.function.arguments
-                        tool_id = tool_call.id
-                    else:
-                        # Direct attributes
-                        tool_name = tool_call.name
-                        tool_args = tool_call.args
-                        tool_id = tool_call.id
+                    logger.error(f"Unknown tool_call format: {tool_call}")
+                    continue
+            except Exception as e:
+                logger.error(f"Error extracting tool information: {e}")
+                continue
 
-                conditional_debug_info(f"Processing tool: {tool_name} with args: {tool_args}")
+            # Process tool arguments
+            if isinstance(tool_args, str):
+                import json
+                try:
+                    tool_args = json.loads(tool_args)
+                except json.JSONDecodeError:
+                    pass
 
-                # Convert arguments from string to dict if needed
-                if isinstance(tool_args, str):
-                    import json
-                    try:
-                        tool_args = json.loads(tool_args)
-                    except json.JSONDecodeError:
-                        conditional_debug_info(f"Warning: Could not parse tool arguments as JSON: {tool_args}")
-                        # Keep as is if not valid JSON
-
-                # Execute the tool
-                if tool_name in DEFINED_TOOLS_DICT:
-                    tool = DEFINED_TOOLS_DICT[tool_name]
-                    try:
-                        # Call the tool - adjust based on your tool's expected input format
+            # Execute the tool
+            result_content = ""
+            if tool_name in DEFINED_TOOLS_DICT:
+                tool = DEFINED_TOOLS_DICT[tool_name]
+                try:
+                    # Call the tool with the appropriate arguments
+                    if hasattr(tool, 'func'):
+                        # If the tool has a func attribute (like a structured tool)
                         if isinstance(tool_args, dict):
                             result = tool.func(**tool_args)
                         else:
                             result = tool.func(tool_args)
+                    elif callable(tool):
+                        # If the tool itself is callable
+                        if isinstance(tool_args, dict):
+                            result = tool(**tool_args)
+                        else:
+                            result = tool(tool_args)
+                    else:
+                        raise ValueError(f"Tool {tool_name} is not callable")
 
-                        tool_response = AIMessage(content=str(result), tool_call_id=tool_id)
-                        results.append(tool_response)
-                    except Exception as e:
-                        import traceback
-                        error_message = f"Error executing tool {tool_name}: {str(e)}\n{traceback.format_exc()}"
-                        conditional_debug_info(error_message)
-                        tool_response = AIMessage(content=f"Error executing tool {tool_name}: {str(e)}",
-                                                  tool_call_id=tool_id)
-                        results.append(tool_response)
-                else:
-                    tool_response = AIMessage(content=f"Tool '{tool_name}' not found", tool_call_id=tool_id)
-                    results.append(tool_response)
+                    result_content = str(result)
+                except Exception as e:
+                    result_content = f"Error executing tool {tool_name}: {str(e)}"
+                    logger.error(result_content)
+            else:
+                result_content = f"Tool '{tool_name}' not found"
+                logger.warning(result_content)
 
-            except Exception as e:
-                import traceback
-                conditional_debug_info(f"Error processing tool call: {str(e)}\n{traceback.format_exc()}")
-                # Create a generic error response if we can't even extract the tool details
-                results.append(AIMessage(content=f"Error processing tool call: {str(e)}"))
+            # Create a proper tool response message
+            try:
+                # Try importing ToolMessage (newer LangChain versions)
+                from langchain_core.messages import ToolMessage
+                tool_response = ToolMessage(
+                    content=result_content,
+                    tool_call_id=tool_id
+                )
+            except (ImportError, AttributeError):
+                # Fall back to AIMessage format
+                tool_response = AIMessage(
+                    content=result_content,
+                    additional_kwargs={
+                        "tool_call_id": tool_id
+                    }
+                )
+
+            results.append(tool_response)
 
         # Update state with tool responses
         return {"messages": state["messages"] + results}
