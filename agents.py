@@ -11,7 +11,7 @@ from langgraph.graph import END, START, StateGraph
 
 from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from prompt_texts import summary_prompt, main_system_prompt
-from tools import DEFINED_TOOLS_DICT,DEFINED_TOOL_NODE
+from tools import DEFINED_TOOLS_DICT,DEFINED_TOOLS
 
 
 # Define agent components
@@ -172,7 +172,8 @@ class AgentLLM:
             self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(
                 model=model_name)
 
-            self._llm_with_tools = self._llm.bind_tools([DEFINED_TOOL_NODE])
+            self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOLS)
+            #TODO: Check if work correctly with other chats after implementing them
             # TODO: node with tools should be inside main agent?
             self._agent_executor = create_main_agent(llm=self._llm_with_tools, target_language=target_language, summary_llm=self._llm)
             self._model_name = model_name
