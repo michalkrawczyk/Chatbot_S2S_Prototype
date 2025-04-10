@@ -9,7 +9,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 
-from utils import logger, conditional_debug_info, RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
+from config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
+from utils import logger, conditional_debug_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT,DEFINED_TOOLS
 
