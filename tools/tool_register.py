@@ -1,3 +1,4 @@
+from typing import Union, Optional, List
 from langchain.tools import Tool
 from langchain_core.tools import tool
 # from langchain.tools import BaseTool
@@ -6,23 +7,53 @@ from langchain_core.tools import tool
 # # Import the tools from your other file
 # from tools.datasheet_manager import DataFrameTool, GoogleSheetInput, DescribeDataInput, FilterDataInput, AggregateDataInput, describe_data, filter_data, aggregate_data
 from tools.file_manager import FileSystemManager
+from tools.datasheet_manager import DATASHEET_MANAGER
 #
 # Create the filesystem tool instance
-filesystem_manager = FileSystemManager()
+FILESYSTEM_MANAGER = FileSystemManager()
+
+class GetChunkParams(BaseModel):
+    rows: Optional[Union[List[int], List[str], int, str]] = Field(
+        None,
+        description="Row indices or names to select (optional)"
+    )
+    columns: Optional[Union[List[int], List[str], int, str]] = Field(
+        None,
+        description="Column indices or names to select (optional)"
+    )
+
+
 
 @tool
 def get_file_list() -> str:
     """
     List available data files in the memory_files directory.
     """
-    return filesystem_manager.list_files()
+    return FILESYSTEM_MANAGER.list_files()
 
 @tool
 def get_file_content(file_name: str) -> str:
     """
     Load a file from the memory_files directory.
     """
-    return filesystem_manager.read_file(file_name) #TODO: switch later for detailed view
+    return FILESYSTEM_MANAGER.read_file(file_name) #TODO: switch later for detailed view
+
+
+
+@tool
+def get_full_dataframe_string_tool() -> str:
+    """
+    Returns the *entire* loaded dataframe as a string.
+    WARNING: This can produce very large output for large datasheets, potentially exceeding token limits.
+    Use 'get_head_tool' or 'calculate_statistics_tool' for summaries when possible.
+    Returns an error message if no data is loaded.
+    """
+    if DATASHEET_MANAGER._df is None:
+        return "Error: No data loaded. Please load a datasheet first."
+    try:
+        return DATASHEET_MANAGER.df_as_str()
+    except Exception as e:
+        return f"Error converting dataframe to string: {e}"
 
 #
 # # Define the tools list for LangChain

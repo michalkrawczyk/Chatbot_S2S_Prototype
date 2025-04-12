@@ -9,6 +9,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from config import FILE_MEMORY_DIR, DATA_FILES_DIR, SUPPORTED_FILETYPES
 from tools.tool_prompts_texts import file_summary_prompt
+from tools.datasheet_manager import DATASHEET_MANAGER
 from utils import conditional_logger_info
 
 
@@ -233,15 +234,13 @@ class FileSystemManager:
 
             # CSV files
             elif file_ext == '.csv':
-                with open(corrected_file_path, 'r', encoding='utf-8') as f:
-                    csv_reader = csv.reader(f)
-                    # TODO: consider using pandas for better handling
-                    return '\n'.join([','.join(row) for row in csv_reader])
+                DATASHEET_MANAGER.load_csv(corrected_file_path)
+                return DATASHEET_MANAGER.df_as_str() # TODO: or should only give description?
 
             # Excel files
             elif file_ext in ['.xlsx', '.xls']:
-                df = pd.read_excel(corrected_file_path)
-                return df.to_string()
+                DATASHEET_MANAGER.load_excel(corrected_file_path)
+                return DATASHEET_MANAGER.df_as_str() # TODO: or should only give description?
 
             # Word documents
             elif file_ext in ['.docx', '.doc']:

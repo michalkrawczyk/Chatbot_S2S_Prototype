@@ -1,236 +1,265 @@
-# import pandas as pd
-# import numpy as np
-# from typing import List, Dict, Any, Optional, Union
-# from pydantic import BaseModel, Field  # Pydantic v1
-# import gspread
-# from langchain.tools import BaseTool, StructuredTool
-# from langchain.pydantic_v1 import BaseModel as LCBaseModel  # Use LangChain's bundled Pydantic v1
-#
-# # Using LangChain's bundled Pydantic version for schemas
-# class GoogleSheetInput(LCBaseModel):
-#     """Input for loading a Google Sheet."""
-#     url: str = Field(..., description="URL of the Google Sheet")
-#     sheet_name: Optional[str] = Field(None, description="Name of the worksheet to load (defaults to first sheet)")
-#     range: Optional[str] = Field(None, description="Cell range to load (e.g., 'A1:D10')")
-#
-#
-# class DataFrameTool:
-#     """Base class for all dataframe operations."""
-#     df: Optional[pd.DataFrame] = None
-#
-#     @classmethod
-#     def load_data(cls, file_path: str) -> str:
-#         """Load data from CSV, Excel file, or Google Sheet URL."""
-#         try:
-#             # Check if the path is a Google Sheets URL
-#             if file_path.startswith(('https://docs.google.com/spreadsheets', 'https://drive.google.com')):
-#                 return cls._load_from_google_sheet(file_path)
-#             elif file_path.endswith('.csv'):
-#                 cls.df = pd.read_csv(file_path)
-#             elif file_path.endswith(('.xlsx', '.xls')):
-#                 cls.df = pd.read_excel(file_path)
-#             else:
-#                 return f"Unsupported file format. Please provide CSV, Excel file, or Google Sheet URL."
-#
-#             return f"Successfully loaded data with {len(cls.df)} rows and {len(cls.df.columns)} columns. Columns: {', '.join(cls.df.columns.tolist())}"
-#         except Exception as e:
-#             return f"Error loading file: {str(e)}"
-#
-#     @classmethod
-#     def _load_from_google_sheet(cls, sheet_url: str) -> str:
-#         """Load data from a publicly shared Google Sheet."""
-#         try:
-#             # Extract the spreadsheet key from the URL
-#             if '/d/' in sheet_url:
-#                 # Format: https://docs.google.com/spreadsheets/d/KEY/edit
-#                 sheet_key = sheet_url.split('/d/')[1].split('/')[0]
-#             else:
-#                 return "Invalid Google Sheet URL. Please provide a URL in the format: https://docs.google.com/spreadsheets/d/KEY/edit"
-#
-#             # Access the sheet without authentication (works only for public sheets)
-#             client = gspread.service_account_from_dict(None)  # No auth for public sheets
-#             try:
-#                 # Try to open the sheet without authentication
-#                 sheet = client.open_by_key(sheet_key)
-#                 worksheet = sheet.get_worksheet(0)  # Get the first worksheet
-#                 data = worksheet.get_all_values()
-#
-#                 # Convert to DataFrame
-#                 cls.df = pd.DataFrame(data[1:], columns=data[0])
-#
-#                 return f"Successfully loaded Google Sheet with {len(cls.df)} rows and {len(cls.df.columns)} columns. Columns: {', '.join(cls.df.columns.tolist())}"
-#
-#             except gspread.exceptions.APIError:
-#                 # If direct access fails, try with public sheet URL
-#                 return cls._load_from_public_sheet(sheet_key)
-#
-#         except Exception as e:
-#             return f"Error loading Google Sheet: {str(e)}"
-#
-#     @classmethod
-#     def _load_from_public_sheet(cls, sheet_key: str) -> str:
-#         """Load data from a publicly shared Google Sheet using the published CSV URL."""
-#         try:
-#             # For public sheets, you can use the CSV export URL
-#             csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=csv"
-#             cls.df = pd.read_csv(csv_url)
-#             return f"Successfully loaded public Google Sheet with {len(cls.df)} rows and {len(cls.df.columns)} columns. Columns: {', '.join(cls.df.columns.tolist())}"
-#         except Exception as e:
-#             return f"Error loading public Google Sheet: {str(e)}. Make sure the sheet is published to the web and accessible to anyone with the link."
-#
-#     @classmethod
-#     def load_google_sheet(cls, url: str, sheet_name: Optional[str] = None, range: Optional[str] = None) -> str:
-#         """Load a specific sheet or range from a Google Sheet."""
-#         try:
-#             # Extract the spreadsheet key from the URL
-#             if '/d/' in url:
-#                 sheet_key = url.split('/d/')[1].split('/')[0]
-#             else:
-#                 return "Invalid Google Sheet URL"
-#
-#             # Try to access using the CSV export approach for public sheets
-#             export_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=csv"
-#
-#             # If a specific sheet is requested, add it to the URL
-#             if sheet_name:
-#                 export_url += f"&gid={sheet_name}"
-#
-#             # Load the data
-#             cls.df = pd.read_csv(export_url)
-#
-#             # Apply range filtering if specified
-#             if range:
-#                 # This is simplified; you'd need to parse A1 notation
-#                 # and convert to row/column indices
-#                 pass
-#
-#             return f"Successfully loaded Google Sheet with {len(cls.df)} rows and {len(cls.df.columns)} columns. Columns: {', '.join(cls.df.columns.tolist())}"
-#
-#         except Exception as e:
-#             return f"Error loading Google Sheet: {str(e)}"
-#
-#
-# class DescribeDataInput(LCBaseModel):
-#     """Input for describing data."""
-#     columns: Optional[List[str]] = Field(None,
-#                                          description="Optional list of columns to describe. If not provided, all columns will be described.")
-#
-#
-# class FilterDataInput(LCBaseModel):
-#     """Input for filtering data."""
-#     query: str = Field(...,
-#                        description="Query string in the format that pandas understands, e.g., 'column > 5 and other_column == \"value\"'")
-#
-#
-# class AggregateDataInput(LCBaseModel):
-#     """Input for aggregating data."""
-#     column: str = Field(..., description="Column to aggregate")
-#     operation: str = Field(...,
-#                            description="Operation to perform: 'mean', 'median', 'sum', 'min', 'max', 'count', 'std', 'var'")
-#     group_by: Optional[List[str]] = Field(None, description="Optional columns to group by")
-#
-#
-# # Function implementations for tool usage
-# def load_data_func(file_path: str) -> str:
-#     """Load data from a CSV, Excel file, or Google Sheet URL."""
-#     return DataFrameTool.load_data(file_path)
-#
-# def load_google_sheet_func(url: str, sheet_name: Optional[str] = None, range: Optional[str] = None) -> str:
-#     """Load data from a Google Sheet with specific sheet name and range."""
-#     return DataFrameTool.load_google_sheet(url, sheet_name, range)
-#
-# def describe_data_func(columns: Optional[List[str]] = None) -> str:
-#     """Get statistical description of the data."""
-#     if DataFrameTool.df is None:
-#         return "No data loaded. Please load data first."
-#
-#     try:
-#         if columns:
-#             description = DataFrameTool.df[columns].describe().to_string()
-#         else:
-#             description = DataFrameTool.df.describe().to_string()
-#         return f"Statistical description of the data:\n{description}"
-#     except Exception as e:
-#         return f"Error describing data: {str(e)}"
-#
-# def filter_data_func(query: str) -> str:
-#     """Filter data based on a query."""
-#     if DataFrameTool.df is None:
-#         return "No data loaded. Please load data first."
-#
-#     try:
-#         filtered_df = DataFrameTool.df.query(query)
-#         preview = filtered_df.head(5).to_string()
-#         return f"Filtered to {len(filtered_df)} rows. Preview:\n{preview}"
-#     except Exception as e:
-#         return f"Error filtering data: {str(e)}"
-#
-# def aggregate_data_func(column: str, operation: str, group_by: Optional[List[str]] = None) -> str:
-#     """Aggregate data with various operations."""
-#     if DataFrameTool.df is None:
-#         return "No data loaded. Please load data first."
-#
-#     operations = {
-#         'mean': np.mean,
-#         'median': np.median,
-#         'sum': np.sum,
-#         'min': np.min,
-#         'max': np.max,
-#         'count': len,
-#         'std': np.std,
-#         'var': np.var
-#     }
-#
-#     if operation not in operations:
-#         return f"Unsupported operation. Choose from: {', '.join(operations.keys())}"
-#
-#     try:
-#         if group_by:
-#             result = DataFrameTool.df.groupby(group_by)[column].agg(operations[operation])
-#             return f"Grouped {operation} of {column} by {', '.join(group_by)}:\n{result.to_string()}"
-#         else:
-#             result = operations[operation](DataFrameTool.df[column])
-#             return f"The {operation} of {column} is: {result}"
-#     except Exception as e:
-#         return f"Error aggregating data: {str(e)}"
-#
-#
-# # Create LangChain tools using StructuredTool for better Pydantic v1 compatibility
-# load_data_tool = StructuredTool.from_function(
-#     func=load_data_func,
-#     name="load_data_tool",
-#     description="Load data from a CSV, Excel file, or Google Sheet URL"
-# )
-#
-# load_google_sheet_tool = StructuredTool.from_function(
-#     func=load_google_sheet_func,
-#     name="load_google_sheet_tool",
-#     description="Load data from a Google Sheet with specific sheet name and range"
-# )
-#
-# describe_data_tool = StructuredTool.from_function(
-#     func=describe_data_func,
-#     name="describe_data_tool",
-#     description="Get statistical description of the data"
-# )
-#
-# filter_data_tool = StructuredTool.from_function(
-#     func=filter_data_func,
-#     name="filter_data_tool",
-#     description="Filter data based on a query"
-# )
-#
-# aggregate_data_tool = StructuredTool.from_function(
-#     func=aggregate_data_func,
-#     name="aggregate_data_tool",
-#     description="Aggregate data with various operations"
-# )
-#
-# # Create a tools list that can be used with an agent
-# datasheet_tools = [
-#     load_data_tool,
-#     load_google_sheet_tool,
-#     describe_data_tool,
-#     filter_data_tool,
-#     aggregate_data_tool
-# ]
+import pandas as pd
+import numpy as np
+from langchain_core.language_models.chat_models import BaseChatModel
+from typing import Union, Optional, List, Dict, Any, Tuple, Iterable
+
+
+class DatasheetManager:
+    """
+    A class to manage and interact with datasheet files (CSV, Excel) with various operations
+    including data extraction, description, and statistical analysis.
+    """
+    _df: Optional[pd.DataFrame] = None
+
+    def load_csv(self, file_path: str, **kwargs) -> None:
+        """
+        Load data from a CSV file.
+
+        Args:
+            file_path: Path to the CSV file
+            **kwargs: Additional arguments to pass to pandas.read_csv
+        """
+        self._df = pd.read_csv(file_path, **kwargs)
+        print(f"Loaded CSV file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
+
+    def load_excel(self, file_path: str, sheet_name=0, **kwargs) -> None:
+        """
+        Load data from an Excel file.
+
+        Args:
+            file_path: Path to the Excel file
+            sheet_name: Name or index of sheet to load (default: 0, first sheet)
+            **kwargs: Additional arguments to pass to pandas.read_excel
+        """
+        self._df = pd.read_excel(file_path, sheet_name=sheet_name, **kwargs)
+        print(f"Loaded Excel file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
+
+    def load_google_sheet(self, sheet_url: str) -> None:
+        """
+        Load data from a Google Sheet.
+
+        Args:
+            sheet_url: URL of the Google Sheet
+
+        Note: Implementation to be added later
+        """
+        # Implementation to be added later
+        raise NotImplementedError("Google Sheet loading is not implemented yet.")
+
+    ## Note: probably not needed
+    # def save_to_csv(self, file_path: str, **kwargs) -> None:
+    #     """
+    #     Save the dataframe to a CSV file.
+    #
+    #     Args:
+    #         file_path: Path to save the CSV file
+    #         **kwargs: Additional arguments to pass to pandas.to_csv
+    #     """
+    #     if self.df is not None:
+    #         self.df.to_csv(file_path, **kwargs)
+    #         print(f"Saved dataframe to CSV file: {file_path}")
+    #     else:
+    #         print("No data to save. Please load data first.")
+    #
+    # def save_to_excel(self, file_path: str, **kwargs) -> None:
+    #     """
+    #     Save the dataframe to an Excel file.
+    #
+    #     Args:
+    #         file_path: Path to save the Excel file
+    #         **kwargs: Additional arguments to pass to pandas.to_excel
+    #     """
+    #     if self.df is not None:
+    #         self.df.to_excel(file_path, **kwargs)
+    #         print(f"Saved dataframe to Excel file: {file_path}")
+    #     else:
+    #         print("No data to save. Please load data first.")
+
+    def get_description(self) -> Dict[str, Any]:
+        """
+        Return a description of the dataframe including columns and sizes.
+
+        Returns:
+            Dictionary containing dataframe metadata
+        """
+        if self._df is None:
+            return {"error": "No data loaded. Please load data first."}
+
+        description = {
+            "rows": len(self._df),
+            "columns": len(self._df.columns),
+            "column_names": list(self._df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in self._df.dtypes.items()},
+            "memory_usage": self._df.memory_usage(deep=True).sum(),
+            "missing_values": self._df.isna().sum().to_dict()
+        }
+
+        return description
+
+    def get_chunk(self,
+                  rows: Optional[Union[List[int], List[str], slice, int, str]] = None,
+                  columns: Optional[Union[List[int], List[str], slice, int, str]] = None) -> pd.DataFrame:
+        """
+        Extract a specific chunk of data from the dataframe.
+
+        Args:
+            rows: Row indices, names, or slice to select
+            columns: Column indices, names, or slice to select
+
+        Returns:
+            Pandas DataFrame containing the requested data chunk
+        """
+        if self._df is None:
+            print("No data loaded. Please load data first.")
+            return pd.DataFrame()
+
+        # Default to all rows and columns if not specified
+        if rows is None and columns is None:
+            return self._df.copy()
+
+        # Handle rows
+        if rows is not None:
+            if isinstance(rows, (int, str)):
+                rows = [rows]
+            row_data = self._df.loc[rows]
+        else:
+            row_data = self._df
+
+        # Handle columns
+        if columns is not None:
+            if isinstance(columns, (int, str)):
+                columns = [columns]
+            return row_data[columns]
+
+        return row_data
+
+    def generate_data_description(self,
+                                  llm: BaseChatModel,
+                                  sample_rows: int = 5,
+                                  include_stats: bool = True) -> str:
+        """
+        Generate a descriptive summary of the data using an LLM.
+
+        Args:
+            llm: LangChain ChatModel instance
+            sample_rows: Number of sample rows to include (default: 5)
+            include_stats: Whether to include basic statistics (default: True)
+
+        Returns:
+            String containing the LLM-generated description
+        """
+        if self._df is None:
+            return "No data loaded. Please load data first."
+
+        # Prepare sample data and statistics
+        sample_data = self._df.head(sample_rows).to_string()
+
+        # Basic statistics for numeric columns
+        stats_text = ""
+        if include_stats:
+            numeric_cols = self._df.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                stats = self._df[numeric_cols].describe().to_string()
+                stats_text = f"\n\nStatistics for numeric columns:\n{stats}"
+
+        # Prepare the prompt for the LLM
+        # TODO: Move the prompt to tool_prompts_texts.py
+        prompt = f"""
+        Please analyze the following dataset and provide a brief description of what it contains.
+
+        Dataset has {len(self._df)} rows and {len(self._df.columns)} columns.
+        Columns: {', '.join(self._df.columns.tolist())}
+
+        Here's a sample of the data:
+        {sample_data}
+        {stats_text}
+
+        Please describe:
+        1. What kind of data this appears to be
+        2. The main entities or concepts represented
+        3. What insights might be extracted from this data
+        """
+
+        # Send to LLM and get response
+        response = llm.invoke(prompt)
+        return response.content
+
+    def calculate_statistics(self,
+                             columns: Union[str, List[str]],
+                             rows: Optional[Union[List[int], List[str], slice]] = None,
+                             stats: Iterable[str] = ('mean', 'median', 'std', 'min', 'max')) -> Dict[str, Any]:
+        """
+        Perform statistical calculations on specified chunks of data using NumPy for performance.
+
+        Args:
+            columns: Column(s) to calculate statistics for
+            rows: Optional row subset to use (default: all rows)
+            stats: List of statistics to calculate (default: mean, median, std, min, max)
+
+        Returns:
+            Dictionary of calculated statistics
+        """
+        if self._df is None:
+            return {"error": "No data loaded. Please load data first."}
+
+        # Get the data subset
+        if rows is not None:
+            data = self._df.loc[rows]
+        else:
+            data = self._df
+
+        if isinstance(columns, str):
+            columns = [columns]
+
+        # Filter to only numeric columns
+        numeric_cols = [col for col in columns if pd.api.types.is_numeric_dtype(data[col])]
+        if not numeric_cols:
+            return {"error": "No numeric columns found in the specified columns."}
+
+        results = {}
+        for col in numeric_cols:
+            # Convert to NumPy array for faster calculations
+            # Drop NaN values for accurate calculations
+            arr = data[col].dropna().to_numpy()
+
+            if len(arr) == 0:
+                results[col] = {"error": "No non-NA values in column"}
+                continue
+
+            col_stats = {}
+
+            for stat in stats:
+                # TODO: Rewrite this to use a dictionary of functions
+                if stat == 'mean':
+                    col_stats['mean'] = np.mean(arr)
+                elif stat == 'median':
+                    col_stats['median'] = np.median(arr)
+                elif stat == 'std':
+                    col_stats['std'] = np.std(arr, ddof=1)  # Using ddof=1 to match pandas default
+                elif stat == 'min':
+                    col_stats['min'] = np.min(arr)
+                elif stat == 'max':
+                    col_stats['max'] = np.max(arr)
+                elif stat == 'count':
+                    col_stats['count'] = len(arr)
+                elif stat == 'sum':
+                    col_stats['sum'] = np.sum(arr)
+                elif stat == 'variance' or stat == 'var':
+                    col_stats['variance'] = np.var(arr, ddof=1)  # Using ddof=1 to match pandas default
+                elif stat == 'range':
+                    col_stats['range'] = np.max(arr) - np.min(arr)
+
+            results[col] = col_stats
+
+        return results
+
+    def df_as_str(self) -> str:
+        """
+        Return the dataframe as a string representation.
+        """
+        if self._df is None:
+            return "No data loaded. Please load data first."
+        return self._df.to_string()
+
+DATASHEET_MANAGER = DatasheetManager()
+# TODO: Think if this should be a singleton or not (Think if it should handle multiple datasheets at once [Memory])

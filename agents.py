@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 
-from config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
+from config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE, KEEP_LAST_UPLOADED_FILE_IN_CONTEXT
 from utils import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT,DEFINED_TOOLS
@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     """State object for the agent."""
     messages: List[BaseMessage]
     memory: List[Dict[str, Any]]
+    context: Optional[str]
 
 
 def should_continue_tools(state: AgentState, end_state: str = "answer_summary") -> Literal["tools", "answer_summary"]:
@@ -43,7 +44,14 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
     # Function to create messages for the agent
     def create_messages(state):
         messages = [SystemMessage(content=system_prompt)]
+        if state.get("context"):
+            context_message = HumanMessage(
+                content=f"Here is a file that might be relevant to the query:\n\n{state['context']}\n\n"
+                        f"Please use this information if relevant to answer the query.")
+            messages.append(context_message)
+
         messages.extend(state["messages"])
+
         return messages
 
     # Function to call the language model
@@ -205,6 +213,7 @@ class AgentLLM:
     _model_name = ""
     _llm = None
     _llm_with_tools = None
+    _context = ""
 
     def initialize_agent(self, api_key, model_name="o3-mini", target_language="eng"):
         """Initialize the agent with the provided API key."""
@@ -238,7 +247,8 @@ class AgentLLM:
 
         initial_state = AgentState(
             messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
-            memory=memory or []
+            memory=memory or [],
+            context=self._context
         )
         thinking_process_message = ""
         config = {"recursion_limit": RECURSION_LIMIT,
@@ -274,3 +284,7 @@ class AgentLLM:
     @property
     def get_llm(self):
         return self._llm
+
+    def set_context(self, context: str):
+        # TODO: Add awerness of length of context (maximum token size)
+        self._context = context

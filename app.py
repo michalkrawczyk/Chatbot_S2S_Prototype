@@ -11,10 +11,12 @@ from datetime import datetime
 from pathlib import Path
 
 from agents import AgentLLM
-from config import SUPPORTED_FILETYPES, FILE_MEMORY_DIR
+from config import SUPPORTED_FILETYPES, FILE_MEMORY_DIR, KEEP_LAST_UPLOADED_FILE_IN_CONTEXT
 from utils import logger, conditional_logger_info
 from audio import AudioProcessor
 from openai_client import OpenAIClient, SUPPORT_LANGUAGES
+
+from tools import get_file_content
 
 import traceback
 
@@ -945,6 +947,7 @@ def create_interface():
                 return "No files uploaded"
 
             saved_files = []
+            last_file = None
             for file_obj in file_objs:
                 try:
                     if file_obj is None:
@@ -957,8 +960,21 @@ def create_interface():
                     # Copy the file to memory_files
                     shutil.copy(file_obj.name, dest_path)
                     saved_files.append(filename)
+                    last_file = dest_path
                 except Exception as e:
                     logger.error(f"Error saving file {file_obj.name if file_obj else 'None'}: {e}")
+
+            if KEEP_LAST_UPLOADED_FILE_IN_CONTEXT:
+                # Read last uploaded file content and add it to condext of the agent
+                if last_file:
+                    try:
+                        content = get_file_content(last_file)
+                        AGENT.set_context(content)
+                        conditional_logger_info(f"Set context from last file: {last_file} \n {content}\n")
+                    except Exception as e:
+                        logger.error(f"Error when setting context from last file: {e}")
+
+
 
             if saved_files:
                 conditional_logger_info(f"Saved files: {saved_files} in {transcriber.config.memory_files_dir}")
