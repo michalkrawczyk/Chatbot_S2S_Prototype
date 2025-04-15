@@ -261,7 +261,7 @@ class DatasheetManager:
 
         return results
 
-    def df_as_str(self, limit_length: Optional[None]) -> str:
+    def df_as_str(self, limit_length: Optional[int] = None) -> str:
         """
         Return the dataframe as a string representation.
         """
