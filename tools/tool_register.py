@@ -10,6 +10,10 @@ from langchain_core.tools import tool
 from tools.file_manager import FileSystemManager
 from tools.datasheet_manager import DATASHEET_MANAGER, DatasheetLoadParams, DatasheetChunkParams, DatasheetStatsReqParams
 
+import traceback
+import logging
+logger = logging.getLogger('Tool Register')
+
 
 #
 # Create the filesystem tool instance
@@ -61,6 +65,7 @@ def get_full_dataframe_string_tool(params: DatasheetLoadParams) -> str:
     try:
         return DATASHEET_MANAGER.df_as_str()
     except Exception as e:
+        logger.error(f"[get_full_dataframe_string_tool] Error converting dataframe to string: {e}")
         return f"Error converting dataframe to string: {e}"
 
 @tool
@@ -81,6 +86,7 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
         chunk = DATASHEET_MANAGER.get_chunk(rows=params.rows, columns=params.columns)
         return chunk.to_string()
     except Exception as e:
+        logger.error(f"[get_datasheet_chunk] Error retrieving data chunk: {e}")
         return f"Error retrieving data chunk: {str(e)}"
 
 
@@ -105,6 +111,7 @@ def calculate_datasheet_statistics(params: DatasheetStatsReqParams) -> Dict[str,
             stats=params.stats
         )
     except Exception as e:
+        logger.error(f"[calculate_datasheet_statistics] Error calculating statistics: {e}")
         return {"error": str(e)}
 
 # @tool
