@@ -80,6 +80,8 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
         String representation of the requested data chunk
     """
     try:
+        logger.info(f"[get_datasheet_chunk] Loading data from {params.file_path} with sheet name {params.sheet_name}")
+        logger.info(f"[get_datasheet_chunk] Loading data with rows: {params.rows} and columns: {params.columns}")
         if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
             _read_datasheet(params.file_path, params.sheet_name)
 
