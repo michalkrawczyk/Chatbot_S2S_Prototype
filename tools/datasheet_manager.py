@@ -3,13 +3,16 @@ import numpy as np
 from langchain_core.language_models.chat_models import BaseChatModel
 from typing import Union, Optional, List, Dict, Any, Tuple, Iterable
 
+from pydantic import BaseModel, Field
 
+### Main class
 class DatasheetManager:
     """
     A class to manage and interact with datasheet files (CSV, Excel) with various operations
     including data extraction, description, and statistical analysis.
     """
     _df: Optional[pd.DataFrame] = None
+    _df_filepath = None
 
     def load_csv(self, file_path: str, **kwargs) -> None:
         """
@@ -20,6 +23,7 @@ class DatasheetManager:
             **kwargs: Additional arguments to pass to pandas.read_csv
         """
         self._df = pd.read_csv(file_path, **kwargs)
+        self._df_filepath = file_path
         print(f"Loaded CSV file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
 
     def load_excel(self, file_path: str, sheet_name=0, **kwargs) -> None:
@@ -32,6 +36,7 @@ class DatasheetManager:
             **kwargs: Additional arguments to pass to pandas.read_excel
         """
         self._df = pd.read_excel(file_path, sheet_name=sheet_name, **kwargs)
+        self._df_filepath = file_path
         print(f"Loaded Excel file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
 
     def load_google_sheet(self, sheet_url: str) -> None:
@@ -44,7 +49,10 @@ class DatasheetManager:
         Note: Implementation to be added later
         """
         # Implementation to be added later
+        self._df_filepath = sheet_url
         raise NotImplementedError("Google Sheet loading is not implemented yet.")
+
+
 
     ## Note: probably not needed
     # def save_to_csv(self, file_path: str, **kwargs) -> None:
@@ -253,13 +261,51 @@ class DatasheetManager:
 
         return results
 
-    def df_as_str(self) -> str:
+    def df_as_str(self, limit_length: Optional[None]) -> str:
         """
         Return the dataframe as a string representation.
         """
         if self._df is None:
             return "No data loaded. Please load data first."
-        return self._df.to_string()
+        return self._df.to_string() if limit_length is None else self._df.to_string()[:limit_length]
 
+    @property
+    def df_filepath(self):
+        """
+        Return the filename of the loaded dataframe.
+        """
+        return self._df_filepath
+
+### Pydantic models
+class DatasheetLoadParams(BaseModel):
+    file_path: str = Field(..., description="Path to the file to load")
+    sheet_name: Optional[Union[str, int]] = Field(0, description="Sheet name or index for Excel files")
+
+
+class DatasheetChunkParams(BaseModel):
+    file_path: Optional[str] = Field(None, description="Path to the file to load (if not already loaded)")
+    rows: Optional[Union[List[int], List[str], int, str]] = Field(
+        None, description="Row indices, names, or slice to select"
+    )
+    columns: Optional[Union[List[int], List[str], int, str]] = Field(
+        None, description="Column indices, names, or slice to select"
+    )
+
+
+class DatasheetStatsReqParams(BaseModel):
+    file_path: Optional[str] = Field(None, description="Path to the file to load (if not already loaded)")
+    columns: Union[str, List[str]] = Field(..., description="Column(s) to calculate statistics for")
+    rows: Optional[Union[List[int], List[str]]] = Field(
+        None, description="Optional row subset to use (default: all rows)"
+    )
+    stats: Optional[List[str]] = Field(
+        ["mean"],
+        description="Statistics to calculate (e.g., mean, median, std, min, max, count, sum, variance, range)"
+    )
+
+
+
+
+### Singleton instance
 DATASHEET_MANAGER = DatasheetManager()
 # TODO: Think if this should be a singleton or not (Think if it should handle multiple datasheets at once [Memory])
