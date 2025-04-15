@@ -66,6 +66,7 @@ def get_full_dataframe_string_tool(params: DatasheetLoadParams) -> str:
         return DATASHEET_MANAGER.df_as_str()
     except Exception as e:
         logger.error(f"[get_full_dataframe_string_tool] Error converting dataframe to string: {e}")
+        logger.error(traceback.format_exc())
         return f"Error converting dataframe to string: {e}"
 
 @tool
@@ -80,8 +81,8 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
         String representation of the requested data chunk
     """
     try:
-        logger.info(f"[get_datasheet_chunk] Loading data from {params.file_path} with sheet name {params.sheet_name}")
-        logger.info(f"[get_datasheet_chunk] Loading data with rows: {params.rows} and columns: {params.columns}")
+        # logger.info(f"[get_datasheet_chunk] Loading data from {params.file_path} with sheet name {params.sheet_name}")
+        # logger.info(f"[get_datasheet_chunk] Loading data with rows: {params.rows} and columns: {params.columns}")
         if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
             _read_datasheet(params.file_path, params.sheet_name)
 
@@ -89,6 +90,7 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
         return chunk.to_string()
     except Exception as e:
         logger.error(f"[get_datasheet_chunk] Error retrieving data chunk: {e}")
+        logger.error(traceback.format_exc())
         return f"Error retrieving data chunk: {str(e)}"
 
 
@@ -114,6 +116,7 @@ def calculate_datasheet_statistics(params: DatasheetStatsReqParams) -> Dict[str,
         )
     except Exception as e:
         logger.error(f"[calculate_datasheet_statistics] Error calculating statistics: {e}")
+        logger.error(traceback.format_exc())
         return {"error": str(e)}
 
 # @tool
