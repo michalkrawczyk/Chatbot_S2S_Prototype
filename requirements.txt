@@ -13,3 +13,4 @@ gradio>=5.23.3
 #gradio==5.23.3
 langgraph==0.3.8
 pandas
+openpyxl
