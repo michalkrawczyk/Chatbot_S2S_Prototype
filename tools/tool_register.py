@@ -52,13 +52,16 @@ def get_file_content(file_name: str) -> str:
 ### Datasheet Tools
 
 @tool
-def get_full_dataframe_string_tool(params: DatasheetLoadParams) -> str:
+def get_full_dataframe_string_tool(params: Union[DatasheetLoadParams, Dict]) -> str:
     """
     Returns the *entire* loaded dataframe as a string.
     WARNING: This can produce very large output for large datasheets, potentially exceeding token limits.
     Use 'get_datasheet_chunk' or 'calculate_statistics_tool' for summaries when possible.
     Returns an error message if no data is loaded.
     """
+    if isinstance(params, dict):
+        params = DatasheetLoadParams(**params)
+
     if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
         _read_datasheet(params.file_path, params.sheet_name)
 
@@ -70,7 +73,7 @@ def get_full_dataframe_string_tool(params: DatasheetLoadParams) -> str:
         return f"Error converting dataframe to string: {e}"
 
 @tool
-def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
+def get_datasheet_chunk(params: Union[DatasheetChunkParams, Dict]) -> str:
     """
     Extract a specific subset of the data from the datasheet.
 
@@ -81,6 +84,8 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
         String representation of the requested data chunk
     """
     try:
+        if isinstance(params, dict):
+            params = DatasheetChunkParams(**params)
         # logger.info(f"[get_datasheet_chunk] Loading data from {params.file_path} with sheet name {params.sheet_name}")
         # logger.info(f"[get_datasheet_chunk] Loading data with rows: {params.rows} and columns: {params.columns}")
         if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
@@ -95,7 +100,7 @@ def get_datasheet_chunk(params: DatasheetChunkParams) -> str:
 
 
 @tool
-def calculate_datasheet_statistics(params: DatasheetStatsReqParams) -> Dict[str, Any]:
+def calculate_datasheet_statistics(params: Union[DatasheetStatsReqParams, Dict]) -> Dict[str, Any]:
     """
     Calculate statistical measures for specified columns in the datasheet.
 
@@ -106,6 +111,9 @@ def calculate_datasheet_statistics(params: DatasheetStatsReqParams) -> Dict[str,
         Dictionary of calculated statistics by column
     """
     try:
+        if isinstance(params, dict):
+            params = DatasheetStatsReqParams(**params)
+
         if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
             _read_datasheet(params.file_path, params.sheet_name)
 
