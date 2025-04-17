@@ -968,8 +968,8 @@ def create_interface():
                 # Read last uploaded file content and add it to condext of the agent
                 if last_file:
                     try:
-                        content = get_file_content(last_file)
-                        AGENT.set_context(content)
+                        # content = get_file_content(last_file)
+                        AGENT.set_context(last_file, context_type="file info")
                         conditional_logger_info(f"Set context from last file: {last_file} \n {content}\n")
                     except Exception as e:
                         logger.error(f"Error when setting context from last file: {e}")

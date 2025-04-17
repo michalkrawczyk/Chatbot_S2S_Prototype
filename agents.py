@@ -248,7 +248,7 @@ class AgentLLM:
         initial_state = AgentState(
             messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
             memory=memory or [],
-            context=self._context
+            context=self._prepare_context_message(self._context[0], self._context[1]) if self._context else None
         )
         thinking_process_message = ""
         config = {"recursion_limit": RECURSION_LIMIT,
@@ -285,6 +285,25 @@ class AgentLLM:
     def get_llm(self):
         return self._llm
 
-    def set_context(self, context: str):
+    def _prepare_context_message(self, context: str, context_type: str = "file info"):
+        """Prepare the context message for the agent."""
+        context_messages = {
+            "file info": f"Here is a file that might be relevant to the query:\n\n{context}\n\n"
+                         f"Please check if this file contains information relevant to the query before exploring other sources.",
+            "file content": f"Here is the content of the file:\n\n{context}\n\n"
+                            f"Please check if this information is relevant to the query before exploring other sources.",
+            "general": f"Here is some additional information that might be relevant to the query:\n\n{context}\n\n"
+                       f"Please use this information if relevant to answer the query."
+        }
+        if context_type not in context_messages:
+            logger.warning(f"Unknown context type: {context_type}. Defaulting to 'general'.")
+
+        # Return the appropriate message or the raw context if context_type is not in the dictionary
+        return context_messages.get(context_type, context)
+
+    def set_context(self, context: str, context_type: str = "file info"):
+        """Set the context for the agent."""
         # TODO: Add awerness of length of context (maximum token size)
-        self._context = context
+
+        logger.info(f"Setting context for the agent: {context_type} - {context}")
+        self._context = (context, context_type)
