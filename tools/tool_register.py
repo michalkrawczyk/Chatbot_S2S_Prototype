@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 # from tools.datasheet_manager import DataFrameTool, GoogleSheetInput, DescribeDataInput, FilterDataInput, AggregateDataInput, describe_data, filter_data, aggregate_data
 from tools.file_manager import FileSystemManager
 from tools.datasheet_manager import DATASHEET_MANAGER, DatasheetLoadParams, DatasheetChunkParams, DatasheetStatsReqParams
+from google_api_manager import GOOGLE_API_CLIENT, GoogleFileInput
 
 import traceback
 import logging
@@ -126,6 +127,52 @@ def calculate_datasheet_statistics(params: Union[DatasheetStatsReqParams, Dict])
         logger.error(f"[calculate_datasheet_statistics] Error calculating statistics: {e}")
         logger.error(traceback.format_exc())
         return {"error": str(e)}
+### Google API
+@tool
+def download_google_file(file_input: GoogleFileInput) -> str:
+    """
+    Download a file from Google Drive or export a Google Sheet as CSV.
+
+    This tool handles both Google Drive files and Google Sheets. For Google Sheets,
+    it exports the data as a CSV file. The tool automatically uses the original
+    filename if no output filename is specified and ensures unique filenames by
+    appending a counter if a file with the same name already exists.
+
+    Examples:
+        - Download a regular file from Google Drive
+        - Export a Google Sheet as CSV with specific cell range
+
+    Args:
+        file_input: GoogleFileInput containing file_url, optional output_filename,
+                   and optional sheet_range (for Google Sheets only)
+
+    Returns:
+        Path to the downloaded file or error message
+    """
+    try:
+        # Determine if the URL is for a Google Sheet
+        is_sheet = "spreadsheets" in file_input.file_url or "sheets.google.com" in file_input.file_url
+
+        if is_sheet:
+            # Export Google Sheet as CSV
+            filepath = GOOGLE_API_CLIENT.save_sheet_to_csv(
+                spreadsheet_id_or_url=file_input.file_url,
+                output_file=file_input.output_filename,
+                sheet_range=file_input.sheet_range
+            )
+            file_type = "Google Sheet as CSV"
+        else:
+            # Download regular Google Drive file
+            filepath = GOOGLE_API_CLIENT.download_file(
+                file_id_or_url=file_input.file_url,
+                output_file=file_input.output_filename
+            )
+            file_type = "Google Drive file"
+
+        return f"Successfully downloaded {file_type} to: {filepath}"
+
+    except Exception as e:
+        return f"Error downloading file: {str(e)}"
 
 # @tool
 # def generate_datasheet_description(request: DataDescriptionRequest) -> str:
@@ -159,36 +206,7 @@ DEFINED_TOOLS = [
     get_full_dataframe_string_tool,
     get_datasheet_chunk,
     calculate_datasheet_statistics,
-    # Tool(
-    #     name="LoadData",
-    #     description="Load data from a CSV, Excel file, or Google Sheet URL. Provide the file path or URL as input.",
-    #     func=lambda file_path: DataFrameTool.load_data(file_path)
-    # ),
-    #
-    # Tool(
-    #     name="LoadGoogleSheet",
-    #     description="Load data from a Google Sheet with options for sheet name and range. Input should be JSON with fields 'url', optional 'sheet_name', and optional 'range'.",
-    #     func=lambda input_data: DataFrameTool.load_google_sheet(GoogleSheetInput(**input_data))
-    # ),
-    #
-    # Tool(
-    #     name="DescribeData",
-    #     description="Get statistical description of loaded data. Optionally provide specific columns to describe as a JSON with 'columns' field containing a list of column names.",
-    #     func=lambda input_data: describe_data(DescribeDataInput(**input_data) if input_data else DescribeDataInput())
-    # ),
-    #
-    # Tool(
-    #     name="FilterData",
-    #     description="Filter data based on a query. Input should be JSON with 'query' field containing a pandas query string, e.g. 'column > 5 and other_column == \"value\"'.",
-    #     func=lambda input_data: filter_data(FilterDataInput(**input_data))
-    # ),
-    #
-    # Tool(
-    #     name="AggregateData",
-    #     description="Aggregate data with operations like mean, median, sum, etc. Input should be JSON with 'column', 'operation', and optional 'group_by' fields.",
-    #     func=lambda input_data: aggregate_data(AggregateDataInput(**input_data))
-    # ),
-    #
+    download_google_file,
 ]
 #
 DEFINED_TOOLS_DICT = {tool.name: tool for tool in DEFINED_TOOLS}

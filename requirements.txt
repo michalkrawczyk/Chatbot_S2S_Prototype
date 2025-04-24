@@ -14,3 +14,5 @@ gradio>=5.23.3
 langgraph==0.3.8
 pandas
 openpyxl
+google-auth
+google-api-python-client

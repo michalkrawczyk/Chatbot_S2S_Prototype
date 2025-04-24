@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from langchain_core.language_models.chat_models import BaseChatModel
 from typing import Union, Optional, List, Dict, Any, Tuple, Iterable
-
 from pydantic import BaseModel, Field
 
 ### Main class
