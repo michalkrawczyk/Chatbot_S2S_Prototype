@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 
 from openai_client import SUPPORT_LANGUAGES_CAST_DICT
-from utils import logger
+from general.logs import logger
 from tools import DEFINED_TOOLS
 
 

@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import time
 
-from utils import logger
+from general.logs import logger
 
 import numpy as np
 import wave

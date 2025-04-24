@@ -11,12 +11,10 @@ from datetime import datetime
 from pathlib import Path
 
 from agents import AgentLLM
-from config import SUPPORTED_FILETYPES, FILE_MEMORY_DIR, KEEP_LAST_UPLOADED_FILE_IN_CONTEXT
-from utils import logger, conditional_logger_info
+from general.config import SUPPORTED_FILETYPES, FILE_MEMORY_DIR, KEEP_LAST_UPLOADED_FILE_IN_CONTEXT
+from general.logs import logger, conditional_logger_info
 from audio import AudioProcessor
 from openai_client import OpenAIClient, SUPPORT_LANGUAGES
-
-from tools import get_file_content
 
 import traceback
 

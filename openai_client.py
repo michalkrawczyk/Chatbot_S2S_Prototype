@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 
 from openai import OpenAI
-from utils import logger
+from general.logs import logger
 
 SUPPORT_LANGUAGES_CAST_DICT = {
     "auto": "English",
