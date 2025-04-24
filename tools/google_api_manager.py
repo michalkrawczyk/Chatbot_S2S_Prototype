@@ -16,7 +16,7 @@ from general.config import FILE_MEMORY_DIR
 class GoogleClient:
     """Client for interacting with Google Sheets and Google Drive."""
 
-    def __init__(self, env_var_name="GOOGLE_SERVICE_KEY", memory_dir: str = FILE_MEMORY_DIR):
+    def __init__(self, env_var_name="GOOGLE_SERVICE_KEY_JSON", memory_dir: str = FILE_MEMORY_DIR):
         """
         Initialize with the environment variable containing the service key JSON.
 
