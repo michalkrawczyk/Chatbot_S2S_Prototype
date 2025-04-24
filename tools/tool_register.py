@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 # from tools.datasheet_manager import DataFrameTool, GoogleSheetInput, DescribeDataInput, FilterDataInput, AggregateDataInput, describe_data, filter_data, aggregate_data
 from tools.file_manager import FileSystemManager
 from tools.datasheet_manager import DATASHEET_MANAGER, DatasheetLoadParams, DatasheetChunkParams, DatasheetStatsReqParams
-from google_api_manager import GOOGLE_API_CLIENT, GoogleFileInput
+from tools.google_api_manager import GOOGLE_API_CLIENT, GoogleFileInput
 
 import traceback
 import logging
