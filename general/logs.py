@@ -1,6 +1,6 @@
 import logging
 
-from config import ADDITIONAL_LOGGER_INFO
+from general.config import ADDITIONAL_LOGGER_INFO
 
 logger = logging.getLogger('voice_transcriber')
 
