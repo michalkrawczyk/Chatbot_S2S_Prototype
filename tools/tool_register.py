@@ -129,7 +129,7 @@ def calculate_datasheet_statistics(params: Union[DatasheetStatsReqParams, Dict])
         return {"error": str(e)}
 ### Google API
 @tool
-def download_google_file(file_input: GoogleFileInput) -> str:
+def download_google_file(params: GoogleFileInput) -> str:
     """
     Download a file from Google Drive or export a Google Sheet as CSV.
 
@@ -143,7 +143,7 @@ def download_google_file(file_input: GoogleFileInput) -> str:
         - Export a Google Sheet as CSV with specific cell range
 
     Args:
-        file_input: GoogleFileInput containing file_url, optional output_filename,
+        params: GoogleFileInput containing file_url, optional output_filename,
                    and optional sheet_range (for Google Sheets only)
 
     Returns:
@@ -151,21 +151,24 @@ def download_google_file(file_input: GoogleFileInput) -> str:
     """
     try:
         # Determine if the URL is for a Google Sheet
-        is_sheet = "spreadsheets" in file_input.file_url or "sheets.google.com" in file_input.file_url
+        is_sheet = "spreadsheets" in params.file_url or "sheets.google.com" in params.file_url
+
+        if isinstance(params, dict):
+            params = GoogleFileInput(**params)
 
         if is_sheet:
             # Export Google Sheet as CSV
             filepath = GOOGLE_API_CLIENT.save_sheet_to_csv(
-                spreadsheet_id_or_url=file_input.file_url,
-                output_file=file_input.output_filename,
-                sheet_range=file_input.sheet_range
+                spreadsheet_id_or_url=params.file_url,
+                output_file=params.output_filename,
+                sheet_range=params.sheet_range
             )
             file_type = "Google Sheet as CSV"
         else:
             # Download regular Google Drive file
             filepath = GOOGLE_API_CLIENT.download_file(
-                file_id_or_url=file_input.file_url,
-                output_file=file_input.output_filename
+                file_id_or_url=params.file_url,
+                output_file=params.output_filename
             )
             file_type = "Google Drive file"
 
