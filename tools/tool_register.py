@@ -150,11 +150,11 @@ def download_google_file(params: GoogleFileInput) -> str:
         Path to the downloaded file or error message
     """
     try:
-        # Determine if the URL is for a Google Sheet
-        is_sheet = "spreadsheets" in params.file_url or "sheets.google.com" in params.file_url
-
         if isinstance(params, dict):
             params = GoogleFileInput(**params)
+
+        # Determine if the URL is for a Google Sheet
+        is_sheet = "spreadsheets" in params.file_url or "sheets.google.com" in params.file_url
 
         if is_sheet:
             # Export Google Sheet as CSV
