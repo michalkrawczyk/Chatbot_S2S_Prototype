@@ -18,7 +18,7 @@ from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
 import traceback
 
-from tools import GoogleFileInput, download_google_file
+from tools import download_google_file
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -969,15 +969,14 @@ def create_interface():
                 try:
                     logger.info(f"Downloading file from Google URL: {google_url}")
 
-                    # Create GoogleFileInput object
-                    params = GoogleFileInput(
-                        file_url=google_url,
-                        output_filename=None,  # Use original filename
-                        sheet_range=None  # Skip sheet range as requested
-                    )
+                    params = {
+                        "file_url": google_url,
+                        "output_filename": None,
+                        "sheet_range": None
+                    }
 
                     # Use the download_google_file tool function
-                    result = download_google_file(params.model_dump())
+                    result = download_google_file(params)
 
                     if "Successfully downloaded" in result:
                         # Extract the filepath from the result message
