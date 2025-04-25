@@ -18,8 +18,7 @@ from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
 import traceback
 
-
-
+from tools import GoogleFileInput, download_google_file
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -33,7 +32,7 @@ class SpacesConfig:
     def __init__(self):
         # Use temp directory for recordings to avoid filling Spaces storage
         self.temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
-        self.memory_files_dir = Path(FILE_MEMORY_DIR) # New directory for uploaded files
+        self.memory_files_dir = Path(FILE_MEMORY_DIR)  # New directory for uploaded files
         self.max_recording_length_seconds = 300  # 5 minutes to avoid timeouts
         self.max_history_items = 5  # Limit history to save memory
         self.supported_languages = SUPPORT_LANGUAGES
@@ -93,7 +92,7 @@ class SpacesTranscriber:
         self.agent_memory = []  # Memory for the agent
         self.thinking_process = ""  # For storing agent's thinking process
         self.current_model = None  # Track the current model
-        self.default_response_language = "eng" # Default language for responses (For now, English)
+        self.default_response_language = "eng"  # Default language for responses (For now, English)
 
     def connect_to_openai(self, api_key):
         """
@@ -517,6 +516,14 @@ def create_interface():
                 # File upload section for memory files
                 with gr.Group():
                     gr.Markdown("### Upload Files to Memory")
+
+                    # Add Google URL input
+                    google_url_input = gr.Textbox(
+                        label="Google Drive/Sheets URL",
+                        placeholder="Paste Google Drive or Google Sheets URL here",
+                        info="Download file directly from Google Drive or Sheets"
+                    )
+
                     memory_files_upload = gr.File(
                         label="Upload Files",
                         file_count="multiple",
@@ -670,7 +677,7 @@ def create_interface():
 
             # Initialize agent with selected model
             success = transcriber.initialize_agent_ui(api_key, model, target_language=language_selector.value)
-            #TODO: ADD agent reinitialization on language change
+            # TODO: ADD agent reinitialization on language change
             if success:
                 conditional_logger_info(
                     f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}")
@@ -940,39 +947,83 @@ def create_interface():
         )
 
         # Handle file uploads to memory_files
-        def save_to_memory_files(file_objs):
-            if not file_objs:
-                return "No files uploaded"
+        def save_to_memory_files(file_objs, google_url=None):
+            """
+            Save uploaded files or download files from Google Drive/Sheets to memory_files directory
 
+            Args:
+                file_objs (list): List of file objects from file upload
+                google_url (str, optional): URL to a Google Drive file or Google Sheet
+
+            Returns:
+                str: Status message about saved files
+            """
             saved_files = []
             last_file = None
-            for file_obj in file_objs:
+
+            # Handle Google URL if provided
+            if google_url and google_url.strip():
                 try:
-                    if file_obj is None:
-                        continue
+                    logger.info(f"Downloading file from Google URL: {google_url}")
 
-                    # Get the filename and create destination path
-                    filename = os.path.basename(file_obj.name)
-                    dest_path = transcriber.config.memory_files_dir / filename
+                    # Create GoogleFileInput object
+                    params = GoogleFileInput(
+                        file_url=google_url,
+                        output_filename=None,  # Use original filename
+                        sheet_range=None  # Skip sheet range as requested
+                    )
 
-                    # Copy the file to memory_files
-                    shutil.copy(file_obj.name, dest_path)
-                    saved_files.append(filename)
-                    last_file = dest_path
+                    # Use the download_google_file tool function
+                    result = download_google_file(params)
+
+                    if "Successfully downloaded" in result:
+                        # Extract the filepath from the result message
+                        filepath = result.split("to: ")[1].strip()
+                        filename = os.path.basename(filepath)
+
+                        # Move the file to memory_files directory if it's not already there
+                        if not filepath.startswith(str(transcriber.config.memory_files_dir)):
+                            dest_path = transcriber.config.memory_files_dir / filename
+                            shutil.copy(filepath, dest_path)
+                            filepath = str(dest_path)
+
+                        saved_files.append(filename)
+                        last_file = filepath
+                        logger.info(f"Successfully downloaded file from Google: {filename}")
+                    else:
+                        logger.error(f"Failed to download file: {result}")
+                        return result
+
                 except Exception as e:
-                    logger.error(f"Error saving file {file_obj.name if file_obj else 'None'}: {e}")
+                    logger.error(f"Error downloading file from Google URL {google_url}: {str(e)}")
+                    return f"Error downloading file: {str(e)}"
+
+            # Handle uploaded files
+            if file_objs:
+                for file_obj in file_objs:
+                    try:
+                        if file_obj is None:
+                            continue
+
+                        # Get the filename and create destination path
+                        filename = os.path.basename(file_obj.name)
+                        dest_path = transcriber.config.memory_files_dir / filename
+
+                        # Copy the file to memory_files
+                        shutil.copy(file_obj.name, dest_path)
+                        saved_files.append(filename)
+                        last_file = str(dest_path)
+                    except Exception as e:
+                        logger.error(f"Error saving file {file_obj.name if file_obj else 'None'}: {e}")
 
             if KEEP_LAST_UPLOADED_FILE_IN_CONTEXT:
-                # Read last uploaded file content and add it to condext of the agent
+                # Read last uploaded file content and add it to context of the agent
                 if last_file:
                     try:
-                        # content = get_file_content(last_file)
                         AGENT.set_context(last_file, context_type="file info")
-                        conditional_logger_info(f"Set context from last file: {last_file} \n {content}\n")
+                        conditional_logger_info(f"Set context from last file: {last_file}")
                     except Exception as e:
                         logger.error(f"Error when setting context from last file: {e}")
-
-
 
             if saved_files:
                 conditional_logger_info(f"Saved files: {saved_files} in {transcriber.config.memory_files_dir}")
@@ -1000,7 +1051,7 @@ def create_interface():
         # Connect the file upload buttons to their functions
         upload_memory_files_btn.click(
             fn=save_to_memory_files,
-            inputs=[memory_files_upload],
+            inputs=[memory_files_upload, google_url_input],
             outputs=[memory_upload_status]
         ).then(
             fn=list_memory_files,
