@@ -1158,10 +1158,14 @@ def create_interface():
         )
 
         # NEW: Enable Audio button handler
+        def enable_audio():
+            return "Audio enabled for this session"
+
+        # Fixed button handler
         enable_audio_btn.click(
-            fn=lambda: "Audio enabled for this session",
+            fn=enable_audio,
             outputs=[status_msg],
-            _js="function() { if(window.audioPlayer) { window.audioPlayer.enableAudio(); } }"
+            js="function() { if(window.audioPlayer) { window.audioPlayer.enableAudio(); } return ['Audio enabled for this session']; }"
         )
 
         # Process recording with auto transcription and analysis
