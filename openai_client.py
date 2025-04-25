@@ -161,7 +161,8 @@ class OpenAIClient:
             if stream:
                 # Use the streaming response approach
                 response = self.client.audio.speech.with_streaming_response.create(
-                    model="tts-1",
+                    model="gpt-4o-mini-tts",
+                    instructions="Speak with soft, calm voice and a conversational manner.",
                     voice=voice,
                     input=text,
                     response_format="mp3"
