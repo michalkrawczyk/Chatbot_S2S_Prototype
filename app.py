@@ -395,7 +395,6 @@ class SpacesTranscriber:
             self.agent_memory = self.agent_memory[-max_memory_items:]
 
     # UPDATED METHOD for Generate Speech with Streaming Support
-    # Now all audio is generated as streaming for consistency
     def generate_speech_from_text(self, text, voice="alloy", stream=True):
         """
         Generate speech from text using OpenAI's TTS API with streaming support
@@ -403,10 +402,10 @@ class SpacesTranscriber:
         Args:
             text (str): Text to convert to speech
             voice (str): Voice to use
-            stream (bool): Whether to use streaming mode (always True now for consistency)
+            stream (bool): Whether to use streaming mode
 
         Returns:
-            tuple: (streaming audio dict, status message)
+            tuple: (audio_data or path or dict, status message)
         """
         if not text:
             return None, "No text provided for speech synthesis"
@@ -421,20 +420,24 @@ class SpacesTranscriber:
                 text = text[:max_chars] + "... (text truncated for speech synthesis)"
 
             # Get audio from OpenAI
-            result = self.openai_client.text_to_speech(text, voice, stream=True)  # Always use streaming
+            result = self.openai_client.text_to_speech(text, voice, stream=stream)
 
             if isinstance(result, str) and result.startswith("Error"):
                 return None, result
 
-            # For streaming, create a generator that yields chunks from the streaming response
-            def audio_stream_generator():
-                # We need to enter the context manager manually
-                with result as streaming_response:
-                    for chunk in streaming_response.iter_bytes(chunk_size=4096):
-                        yield chunk
+            if stream:
+                # For streaming, create a generator that yields chunks from the streaming response
+                def audio_stream_generator():
+                    # We need to enter the context manager manually
+                    with result as streaming_response:
+                        for chunk in streaming_response.iter_bytes(chunk_size=4096):
+                            yield chunk
 
-            # Return streaming configuration for Gradio
-            return {"audio": audio_stream_generator(), "streaming": True, "autoplay": True}, "Streaming speech..."
+                # Return streaming configuration for Gradio
+                return {"audio": audio_stream_generator(), "streaming": True, "autoplay": True}, "Streaming speech..."
+            else:
+                # For non-streaming, return a file URL object that our unified player can handle
+                return {"file_url": result}, "Speech generated successfully"
 
         except Exception as e:
             logger.error(f"Error in speech generation: {str(e)}")
@@ -626,7 +629,7 @@ def create_interface():
                     speak_analysis_btn = gr.Button("🔊 Speak Analysis", variant="secondary")
                     stream_analysis_btn = gr.Button("🔊 Stream Analysis", variant="primary")
 
-                # UPDATED: Enhanced streaming audio component with LocalAudioPlayer
+                # ENHANCED: Unified streaming audio component with LocalAudioPlayer
                 streaming_audio = gr.HTML(
                     """
                     <div id="streaming-player">
@@ -635,7 +638,7 @@ def create_interface():
                         <button id="start-playback" style="display:none; margin-top:10px; padding:8px 15px; background-color:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer;">Start Playback</button>
 
                         <script>
-                        // Create a LocalAudioPlayer class for robust streaming audio playback
+                        // Create a unified LocalAudioPlayer class for both streaming and file playback
                         class LocalAudioPlayer {
                             constructor() {
                                 this.audioElement = document.getElementById('stream-audio');
@@ -647,6 +650,7 @@ def create_interface():
                                 this.isPlaying = false;
                                 this.pendingChunks = [];
                                 this.processing = false;
+                                this.mode = 'none'; // 'stream' or 'file'
 
                                 // Set up event listeners
                                 this.setupEventListeners();
@@ -656,7 +660,7 @@ def create_interface():
                                 // Show play button if autoplay fails
                                 this.audioElement.addEventListener('error', (e) => {
                                     console.error('Audio error:', e, this.audioElement.error);
-                                    this.showPlayButton('Playback error. Click to try again.');
+                                    this.showPlayButton('Autoplay failed. Click to play.');
                                 });
 
                                 // Manual play button handler
@@ -665,15 +669,93 @@ def create_interface():
                                 });
                             }
 
-                            async play(stream) {
-                                try {
-                                    this.updateStatus('Setting up audio stream...');
+                            async play(input) {
+                                // Reset previous playback
+                                this.reset();
 
-                                    // Reset state
-                                    this.chunksProcessed = 0;
-                                    this.isPlaying = false;
-                                    this.pendingChunks = [];
-                                    this.playButton.style.display = 'none';
+                                if (input === null || input === undefined) {
+                                    this.updateStatus('No audio provided');
+                                    return;
+                                }
+
+                                // Handle different input types
+                                if (typeof input === 'string') {
+                                    // Input is a URL
+                                    this.playUrl(input);
+                                } else if (typeof input === 'object' && input.file_url) {
+                                    // Input is a file_url object
+                                    this.playUrl(input.file_url);
+                                } else if (typeof input === 'object' && Symbol.asyncIterator in input) {
+                                    // Input is an async iterable (stream)
+                                    await this.playStream(input);
+                                } else {
+                                    this.updateStatus('Unsupported audio format');
+                                    console.error('Unsupported input format:', input);
+                                }
+                            }
+
+                            reset() {
+                                // Reset state for new playback
+                                this.stopPlayback();
+                                this.chunksProcessed = 0;
+                                this.isPlaying = false;
+                                this.pendingChunks = [];
+                                this.processing = false;
+                                this.mediaSource = null;
+                                this.sourceBuffer = null;
+                                this.playButton.style.display = 'none';
+                                this.updateStatus('Ready to play...');
+                            }
+
+                            stopPlayback() {
+                                // Stop any current playback
+                                if (this.audioElement) {
+                                    this.audioElement.pause();
+                                    this.audioElement.currentTime = 0;
+
+                                    // If using MediaSource, clean it up
+                                    if (this.mediaSource && this.mediaSource.readyState === 'open') {
+                                        try {
+                                            this.mediaSource.endOfStream();
+                                        } catch (e) {
+                                            // Ignore errors when closing an already closed MediaSource
+                                        }
+                                    }
+                                }
+                            }
+
+                            playUrl(url) {
+                                this.mode = 'file';
+                                this.updateStatus('Loading audio file...');
+
+                                // Set src directly for file playback
+                                this.audioElement.src = url;
+
+                                // Set up event handlers
+                                this.audioElement.oncanplaythrough = () => {
+                                    this.attemptAutoplay();
+                                };
+
+                                this.audioElement.onplaying = () => {
+                                    this.updateStatus('Playing audio file...');
+                                    this.isPlaying = true;
+                                };
+
+                                this.audioElement.onended = () => {
+                                    this.updateStatus('Playback complete');
+                                };
+
+                                this.audioElement.onerror = () => {
+                                    const errorMsg = this.audioElement.error ? this.audioElement.error.message : 'Unknown error';
+                                    this.updateStatus(`Error: ${errorMsg}`);
+                                    this.showPlayButton('Error playing file. Click to retry.');
+                                };
+                            }
+
+                            async playStream(stream) {
+                                try {
+                                    this.mode = 'stream';
+                                    this.updateStatus('Setting up audio stream...');
 
                                     // Create new MediaSource
                                     this.mediaSource = new MediaSource();
@@ -788,7 +870,7 @@ def create_interface():
                                         // After a slight delay, try to unmute
                                         setTimeout(() => {
                                             this.audioElement.muted = false;
-                                            this.updateStatus("Playing audio...");
+                                            this.updateStatus(this.mode === 'stream' ? "Streaming audio..." : "Playing audio...");
                                         }, 1000);
                                     })
                                     .catch(e => {
@@ -805,7 +887,7 @@ def create_interface():
                                     .then(() => {
                                         this.isPlaying = true;
                                         this.playButton.style.display = 'none';
-                                        this.updateStatus("Playing audio...");
+                                        this.updateStatus(this.mode === 'stream' ? "Streaming audio..." : "Playing audio...");
                                     })
                                     .catch(e => {
                                         console.error("Manual play failed:", e);
@@ -969,7 +1051,7 @@ def create_interface():
                 # Default values in case analysis fails
                 analysis_result = ""
                 thinking_process = ""
-                stream_result = None
+                audio_output = None
 
                 # Automatically analyze if enabled
                 if auto_analyze_value and transcription and not transcription.startswith("Error"):
@@ -981,9 +1063,10 @@ def create_interface():
 
                         # Generate speech if auto-speak is enabled
                         if auto_speak_value:
-                            stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result,
-                                                                                              voice_value)
-                            if stream_result:
+                            audio_output, tts_status = transcriber.generate_speech_from_text(analysis_result,
+                                                                                             voice_value,
+                                                                                             stream=False)
+                            if audio_output:
                                 status_msg += " with speech"
                             else:
                                 status_msg += f" (speech generation failed: {tts_status})"
@@ -992,7 +1075,7 @@ def create_interface():
                         analysis_result = f"Analysis error: {str(e)}"
                         thinking_process = ""
 
-                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process, stream_result
+                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process, audio_output
             except Exception as e:
                 logger.error(f"Error in handle_recording_wrapper: {str(e)}")
                 return f"Error processing recording: {str(e)}", None, "", 0, "", "", None
@@ -1006,6 +1089,27 @@ def create_interface():
             fn=update_recording_info,
             inputs=[current_duration],
             outputs=[status_msg]
+        ).then(
+            fn=lambda: None,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+                // Handle audio playback if available
+                const audioInfo = document.querySelector('#audio_playback audio');
+                if (audioInfo && audioInfo.src) {
+                    console.log("Auto-playing recorded audio");
+                }
+
+                // Handle TTS audio if available
+                const result = gradioApp().getElementById("component-40"); // streaming_audio component
+                const audioObj = result.querySelector("#stream-audio");
+                if (audioObj && audioObj.src && audioObj.src !== "about:blank") {
+                    console.log("Auto-playing TTS audio");
+                    window.audioPlayer.attemptAutoplay();
+                }
+            }
+            """
         )
 
         # Process uploaded audio with automatic analysis
@@ -1038,7 +1142,7 @@ def create_interface():
                 # Analyze
                 analysis_result = ""
                 thinking_process = ""
-                stream_result = None
+                audio_output = None
 
                 if transcription and not transcription.startswith("Error"):
                     analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
@@ -1049,13 +1153,14 @@ def create_interface():
 
                     # Generate speech if auto-speak is enabled
                     if auto_speak_value:
-                        stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
-                        if not stream_result:
+                        audio_output, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                         stream=False)
+                        if not audio_output:
                             status_msg += f" (speech generation failed: {tts_status})"
 
                 conditional_logger_info(
                     f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
-                return status_msg, transcription or "", analysis_result, thinking_process, stream_result
+                return status_msg, transcription or "", analysis_result, thinking_process, audio_output
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
                 conditional_logger_info(traceback.format_exc())
@@ -1065,6 +1170,21 @@ def create_interface():
             fn=process_uploaded_audio_with_analysis,
             inputs=[audio_upload, language_selector, api_key_input],
             outputs=[upload_status, transcription_output, analysis_output, thinking_display, streaming_audio]
+        ).then(
+            fn=lambda: None,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+                // Play audio if available
+                const result = gradioApp().getElementById("component-40"); // streaming_audio component
+                const audioObj = result.querySelector("#stream-audio");
+                if (audioObj && audioObj.src && audioObj.src !== "about:blank") {
+                    console.log("Auto-playing analysis audio");
+                    window.audioPlayer.attemptAutoplay();
+                }
+            }
+            """
         )
 
         # Analyze text input
@@ -1089,13 +1209,14 @@ def create_interface():
                 transcriber.add_to_agent_memory(text, analysis_result)
 
                 # Generate speech if auto-speak is enabled
-                stream_result = None
+                audio_output = None
                 if auto_speak_value:
-                    stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
-                    if not stream_result:
+                    audio_output, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                     stream=False)
+                    if not audio_output:
                         return f"Text analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
-                return "Text analysis completed", analysis_result, thinking_process, stream_result
+                return "Text analysis completed", analysis_result, thinking_process, audio_output
             except Exception as e:
                 logger.error(f"Error analyzing text: {str(e)}")
                 conditional_logger_info(traceback.format_exc())
@@ -1109,6 +1230,21 @@ def create_interface():
             fn=lambda: update_memory_display(),
             inputs=[],
             outputs=[memory_display]
+        ).then(
+            fn=lambda: None,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+                // Play audio if available
+                const result = gradioApp().getElementById("component-40"); // streaming_audio component
+                const audioObj = result.querySelector("#stream-audio");
+                if (audioObj && audioObj.src && audioObj.src !== "about:blank") {
+                    console.log("Auto-playing analysis audio");
+                    window.audioPlayer.attemptAutoplay();
+                }
+            }
+            """
         )
 
         # Analyze transcription
@@ -1132,13 +1268,14 @@ def create_interface():
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
                 # Generate speech if auto-speak is enabled
-                stream_result = None
+                audio_output = None
                 if auto_speak_value:
-                    stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
-                    if not stream_result:
+                    audio_output, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                     stream=False)
+                    if not audio_output:
                         return f"Analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
-                return "Analysis completed", analysis_result, thinking_process, stream_result
+                return "Analysis completed", analysis_result, thinking_process, audio_output
             except Exception as e:
                 logger.error(f"Error in analyze_transcription: {str(e)}")
                 return f"Analysis error: {str(e)}", "", "", None
@@ -1151,16 +1288,31 @@ def create_interface():
             fn=lambda: update_memory_display(),
             inputs=[],
             outputs=[memory_display]
+        ).then(
+            fn=lambda: None,
+            inputs=[],
+            outputs=[],
+            js="""
+            () => {
+                // Play audio if available
+                const result = gradioApp().getElementById("component-40"); // streaming_audio component
+                const audioObj = result.querySelector("#stream-audio");
+                if (audioObj && audioObj.src && audioObj.src !== "about:blank") {
+                    console.log("Auto-playing analysis audio");
+                    window.audioPlayer.attemptAutoplay();
+                }
+            }
+            """
         )
 
-        # UPDATED: Speak analysis now uses streaming
+        # Regular speech (non-streaming) for analysis
         def speak_analysis(analysis_text, voice):
             if not analysis_text:
                 return "No analysis to speak", None
 
             try:
-                stream_result, status = transcriber.generate_speech_from_text(analysis_text, voice)
-                return status, stream_result
+                audio_output, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=False)
+                return status, audio_output
             except Exception as e:
                 logger.error(f"Error in speech generation: {str(e)}")
                 return f"Speech generation error: {str(e)}", None
@@ -1170,41 +1322,65 @@ def create_interface():
             inputs=[analysis_output, voice_selector],
             outputs=[status_msg, streaming_audio],
             js="""
-            async function(status, stream) {
-                if (!stream || !stream.streaming) {
-                    return ["Stream failed: No valid stream data", null];
+            async function(status, audioInfo) {
+                if (!audioInfo) {
+                    return [status, null];
                 }
 
                 try {
-                    // Use our LocalAudioPlayer
-                    await window.audioPlayer.play(stream.audio);
-                    return ["Streaming processed successfully", null];
+                    // For file-based playback from file_url
+                    if (audioInfo.file_url) {
+                        window.audioPlayer.play(audioInfo.file_url);
+                    }
+                    // For streaming
+                    else if (audioInfo.streaming && audioInfo.audio) {
+                        await window.audioPlayer.play(audioInfo.audio);
+                    }
+                    return [status, null];
                 } catch (error) {
-                    console.error('Streaming error:', error);
-                    return [`Streaming error: ${error.message || 'Unknown error'}`, null];
+                    console.error('Audio playback error:', error);
+                    return [`${status} (playback error: ${error.message})`, null];
                 }
             }
             """
         )
 
-        # Stream analysis (same as speak analysis now that we consolidated the audio players)
+        # UPDATED: Streaming speech for analysis with LocalAudioPlayer
+        def stream_analysis(analysis_text, voice):
+            if not analysis_text:
+                return "No analysis to stream", None
+
+            try:
+                # Get streaming response
+                stream_result, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=True)
+                return status, stream_result
+            except Exception as e:
+                logger.error(f"Streaming error: {str(e)}")
+                return f"Streaming error: {str(e)}", None
+
         stream_analysis_btn.click(
-            fn=speak_analysis,
+            fn=stream_analysis,
             inputs=[analysis_output, voice_selector],
             outputs=[status_msg, streaming_audio],
             js="""
-            async function(status, stream) {
-                if (!stream || !stream.streaming) {
-                    return ["Stream failed: No valid stream data", null];
+            async function(status, audioInfo) {
+                if (!audioInfo || (!audioInfo.streaming && !audioInfo.file_url)) {
+                    return ["Stream failed: No valid audio data", null];
                 }
 
                 try {
-                    // Use our LocalAudioPlayer
-                    await window.audioPlayer.play(stream.audio);
-                    return ["Streaming processed successfully", null];
+                    // Handle either streaming or file playback
+                    if (audioInfo.streaming && audioInfo.audio) {
+                        // For streaming
+                        await window.audioPlayer.play(audioInfo.audio);
+                    } else if (audioInfo.file_url) {
+                        // For file playback
+                        window.audioPlayer.play(audioInfo.file_url);
+                    }
+                    return ["Audio processed successfully", null];
                 } catch (error) {
-                    console.error('Streaming error:', error);
-                    return [`Streaming error: ${error.message || 'Unknown error'}`, null];
+                    console.error('Audio playback error:', error);
+                    return [`Audio error: ${error.message || 'Unknown error'}`, null];
                 }
             }
             """
@@ -1223,7 +1399,7 @@ def create_interface():
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
                 # Then stream the result
-                stream_result, status = transcriber.generate_speech_from_text(analysis_result, voice)
+                stream_result, status = transcriber.generate_speech_from_text(analysis_result, voice, stream=True)
 
                 return "Analysis completed and streaming", analysis_result, thinking_process, stream_result
             except Exception as e:
@@ -1236,18 +1412,24 @@ def create_interface():
             inputs=[transcription_output, voice_selector],
             outputs=[status_msg, analysis_output, thinking_display, streaming_audio],
             js="""
-            async function(status, analysis, thinking, stream) {
-                if (!stream || !stream.streaming) {
-                    return ["Stream failed: No valid stream data", analysis, thinking, null];
+            async function(status, analysis, thinking, audioInfo) {
+                if (!audioInfo || (!audioInfo.streaming && !audioInfo.file_url)) {
+                    return ["Stream failed: No valid audio data", analysis, thinking, null];
                 }
 
                 try {
-                    // Use our LocalAudioPlayer
-                    await window.audioPlayer.play(stream.audio);
-                    return ["Analysis completed and streamed successfully", analysis, thinking, null];
+                    // Handle either streaming or file playback
+                    if (audioInfo.streaming && audioInfo.audio) {
+                        // For streaming
+                        await window.audioPlayer.play(audioInfo.audio);
+                    } else if (audioInfo.file_url) {
+                        // For file playback
+                        window.audioPlayer.play(audioInfo.file_url);
+                    }
+                    return ["Analysis completed with audio", analysis, thinking, null];
                 } catch (error) {
-                    console.error('Streaming error:', error);
-                    return [`Analysis completed but streaming failed: ${error.message || 'Unknown error'}`, analysis, thinking, null];
+                    console.error('Audio playback error:', error);
+                    return [`Analysis completed but audio failed: ${error.message}`, analysis, thinking, null];
                 }
             }
             """
