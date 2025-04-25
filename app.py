@@ -484,7 +484,7 @@ def create_interface():
                     # Agent model selector
                     agent_model_selector = gr.Dropdown(
                         choices=["o3-mini", "gpt-4-turbo", "gpt-4o"],
-                        value="o3-mini",
+                        value="Pick the model",
                         label="Agent Model",
                         info="Select the model for the AI agent"
                     )
