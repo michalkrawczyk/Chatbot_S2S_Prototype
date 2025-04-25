@@ -165,7 +165,7 @@ class OpenAIClient:
                     instructions="Speak with soft, calm voice and a conversational manner.",
                     voice=voice,
                     input=text,
-                    response_format="mp3"
+                    response_format="wav"
                 )
                 return response
             else:
