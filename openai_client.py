@@ -144,37 +144,39 @@ class OpenAIClient:
 
     def text_to_speech(self, text, voice="alloy", stream=True):
         """
-        Convert text to speech using OpenAI's TTS API
+        Convert text to speech using OpenAI's TTS API with streaming support
 
         Args:
             text (str): The text to convert to speech
-            voice (str): The voice to use (alloy, echo, fable, onyx, nova, or shimmer)
-            stream (bool): Whether to stream the audio or save to file
+            voice (str): The voice to use
+            stream (bool): Whether to use streaming mode
 
         Returns:
-            bytes or str: Audio bytes if streaming, file path if saving, or error message
+            generator or str: Audio stream generator or file path
         """
         if not self.client:
             return "Error: Not connected to OpenAI API"
 
         try:
-            # Call OpenAI TTS API
+            response_format="mp3"
+            # Create streaming response from OpenAI
             response = self.client.audio.speech.create(
                 model="tts-1",
                 voice=voice,
-                input=text
+                input=text,
+                response_format=response_format,
+                stream=True  # Always use streaming for efficiency
             )
 
             if stream:
-                # Return the audio data as bytes
-                return response.content
+                # Return the streaming response directly as a generator
+                return response
             else:
-                # Save to file (original behavior)
+                # Save to file for non-streaming use
                 temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
                 temp_dir.mkdir(exist_ok=True, parents=True)
-                output_path = str(temp_dir / f"tts_{int(time.time())}.mp3")
+                output_path = str(temp_dir / f"tts_{int(time.time())}.{response_format}")
                 response.stream_to_file(output_path)
-                logger.info(f"Text-to-speech audio saved to: {output_path}")
                 return output_path
 
         except Exception as e:

@@ -394,16 +394,18 @@ class SpacesTranscriber:
         if len(self.agent_memory) > max_memory_items:
             self.agent_memory = self.agent_memory[-max_memory_items:]
 
-    def generate_speech_from_text(self, text, voice="alloy"):
+    # UPDATED METHOD for Generate Speech with Streaming Support
+    def generate_speech_from_text(self, text, voice="alloy", stream=True):
         """
-        Generate speech from text using OpenAI's TTS API
+        Generate speech from text using OpenAI's TTS API with streaming support
 
         Args:
             text (str): Text to convert to speech
             voice (str): Voice to use
+            stream (bool): Whether to use streaming mode
 
         Returns:
-            tuple: (audio_data or path or None, status message)
+            tuple: (audio_data or path or dict, status message)
         """
         if not text:
             return None, "No text provided for speech synthesis"
@@ -417,27 +419,30 @@ class SpacesTranscriber:
             if len(text) > max_chars:
                 text = text[:max_chars] + "... (text truncated for speech synthesis)"
 
-            # Get audio from OpenAI - this returns bytes directly since stream=True is the default
-            result = self.openai_client.text_to_speech(text, voice)
+            # Get audio from OpenAI
+            result = self.openai_client.text_to_speech(text, voice, stream=stream)
 
             if isinstance(result, str) and result.startswith("Error"):
                 return None, result
 
-            # For Gradio's audio component to work with bytes, we need to save the data
-            # to a temporary file since Gradio's Audio component works best with files
-            temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
-            temp_path = temp_file.name
+            if stream:
+                # Return streaming configuration for Gradio
+                return {"audio": result, "streaming": True}, "Streaming speech..."
+            else:
+                # For Gradio's audio component with file path
+                temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+                temp_path = temp_file.name
 
-            # Write bytes to file if we got bytes back
-            if isinstance(result, bytes):
-                with open(temp_path, 'wb') as f:
-                    f.write(result)
-                # Register for cleanup
-                atexit.register(lambda: os.unlink(temp_path) if os.path.exists(temp_path) else None)
-                return temp_path, "Speech generated successfully"
+                # Write bytes to file if we got bytes back
+                if isinstance(result, bytes):
+                    with open(temp_path, 'wb') as f:
+                        f.write(result)
+                    # Register for cleanup
+                    atexit.register(lambda: os.unlink(temp_path) if os.path.exists(temp_path) else None)
+                    return temp_path, "Speech generated successfully"
 
-            # If we got a path back (stream=False was used), just return it
-            return result, "Speech generated successfully"
+                # If we got a path back (stream=False was used), just return it
+                return result, "Speech generated successfully"
 
         except Exception as e:
             logger.error(f"Error in speech generation: {str(e)}")
@@ -624,11 +629,25 @@ def create_interface():
                 )
 
                 # TTS playback and control
-                speak_analysis_btn = gr.Button("🔊 Speak Analysis", variant="secondary")
+                with gr.Row():
+                    speak_analysis_btn = gr.Button("🔊 Speak Analysis", variant="secondary")
+                    stream_analysis_btn = gr.Button("🔊 Stream Analysis", variant="primary")
+
                 tts_audio = gr.Audio(
                     label="Analysis Audio",
                     type="filepath",
                     interactive=False
+                )
+
+                # Streaming audio component
+                streaming_audio = gr.HTML(
+                    """
+                    <div id="streaming-player">
+                        <audio id="stream-audio" controls></audio>
+                        <div id="stream-status">Ready to stream</div>
+                    </div>
+                    """,
+                    label="Streaming Audio"
                 )
 
                 # Thinking process display
@@ -760,7 +779,8 @@ def create_interface():
                         # Generate speech if auto-speak is enabled
                         if auto_speak_value:
                             tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result,
-                                                                                               voice_value)
+                                                                                               voice_value,
+                                                                                               stream=False)
                             if tts_audio_path:
                                 status_msg += " with speech"
                             else:
@@ -827,7 +847,8 @@ def create_interface():
 
                     # Generate speech if auto-speak is enabled
                     if auto_speak_value:
-                        tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                        tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                           stream=False)
                         if not tts_audio_path:
                             status_msg += f" (speech generation failed: {tts_status})"
 
@@ -869,7 +890,8 @@ def create_interface():
                 # Generate speech if auto-speak is enabled
                 tts_audio_path = None
                 if auto_speak_value:
-                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                       stream=False)
                     if not tts_audio_path:
                         return f"Text analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
@@ -912,7 +934,8 @@ def create_interface():
                 # Generate speech if auto-speak is enabled
                 tts_audio_path = None
                 if auto_speak_value:
-                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
+                                                                                       stream=False)
                     if not tts_audio_path:
                         return f"Analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
@@ -931,13 +954,13 @@ def create_interface():
             outputs=[memory_display]
         )
 
-        # Speech analysis
+        # Regular speech (non-streaming) for analysis
         def speak_analysis(analysis_text, voice):
             if not analysis_text:
                 return "No analysis to speak", None
 
             try:
-                audio_path, status = transcriber.generate_speech_from_text(analysis_text, voice)
+                audio_path, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=False)
                 return status, audio_path
             except Exception as e:
                 logger.error(f"Error in speech generation: {str(e)}")
@@ -947,6 +970,65 @@ def create_interface():
             fn=speak_analysis,
             inputs=[analysis_output, voice_selector],
             outputs=[status_msg, tts_audio]
+        )
+
+        # ADDED: Streaming speech for analysis
+        def stream_analysis(analysis_text, voice):
+            if not analysis_text:
+                return "No analysis to stream", None
+
+            try:
+                # Get streaming response
+                stream_result, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=True)
+                return status, stream_result
+            except Exception as e:
+                logger.error(f"Streaming error: {str(e)}")
+                return f"Streaming error: {str(e)}", None
+
+        stream_analysis_btn.click(
+            fn=stream_analysis,
+            inputs=[analysis_output, voice_selector],
+            outputs=[status_msg, streaming_audio],
+            js="""
+            async function(status, stream) {
+                if (!stream || !stream.streaming) {
+                    document.getElementById('stream-status').textContent = 'Stream failed';
+                    return [status, null];
+                }
+
+                const statusEl = document.getElementById('stream-status');
+                statusEl.textContent = 'Streaming...';
+
+                try {
+                    const audioElement = document.getElementById('stream-audio');
+                    const mediaSource = new MediaSource();
+                    audioElement.src = URL.createObjectURL(mediaSource);
+
+                    mediaSource.addEventListener('sourceopen', async () => {
+                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+
+                        for await (const chunk of stream.audio) {
+                            // Add audio chunk to buffer
+                            sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                            // Wait for update to complete
+                            await new Promise(resolve => {
+                                sourceBuffer.addEventListener('updateend', resolve, {once: true});
+                            });
+                        }
+
+                        mediaSource.endOfStream();
+                        statusEl.textContent = 'Streaming completed';
+                    });
+
+                    audioElement.play();
+                    return [status, null];
+                } catch (error) {
+                    console.error('Streaming error:', error);
+                    statusEl.textContent = `Error: ${error.message}`;
+                    return [status, null];
+                }
+            }
+            """
         )
 
         # Handle file uploads to memory_files
