@@ -52,6 +52,29 @@ class GoogleClient:
         self.drive_service = build('drive', 'v3', credentials=self.credentials)
         self.sheets_service = build('sheets', 'v4', credentials=self.credentials)
 
+    def get_sheet_names(self, spreadsheet_id_or_url):
+        """
+        Get all sheet names from a Google Spreadsheet.
+
+        Args:
+            spreadsheet_id_or_url (str): The ID or URL of the spreadsheet.
+
+        Returns:
+            list: List of sheet names.
+        """
+        spreadsheet_id = self.extract_file_id(spreadsheet_id_or_url)
+
+        # Get spreadsheet metadata including sheets
+        spreadsheet = self.sheets_service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id
+        ).execute()
+
+        # Extract sheet names
+        sheets = spreadsheet.get('sheets', [])
+        sheet_names = [sheet.get('properties', {}).get('title', '') for sheet in sheets]
+
+        return sheet_names
+
     def extract_file_id(self, url):
         """
         Extract file ID from Google Drive or Sheets URL.
@@ -143,63 +166,119 @@ class GoogleClient:
 
     # Google Sheets Methods
 
-    def get_sheet_values(self, spreadsheet_id_or_url, sheet_range="Sheet1"):
+    def get_sheet_values(self, spreadsheet_id_or_url, sheet_range=None):
         """
         Get values from a spreadsheet.
 
         Args:
             spreadsheet_id_or_url (str): The ID or URL of the spreadsheet.
             sheet_range (str, optional): Range of the worksheet (e.g., "Sheet1", "Sheet1!A1:D10").
+                                        If None, returns data from all sheets.
 
         Returns:
-            list: List of rows, where each row is a list of cell values.
+            dict or list: If sheet_range is None, returns a dictionary mapping sheet names to their values.
+                         Otherwise, returns a list of rows for the specified sheet range.
         """
         spreadsheet_id = self.extract_file_id(spreadsheet_id_or_url)
-        result = self.sheets_service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=sheet_range
-        ).execute()
-        return result.get('values', [])
 
-    def save_sheet_to_csv(self, spreadsheet_id_or_url, output_file=None, sheet_range="Sheet1"):
+        # If no sheet range is specified, get all sheets
+        if sheet_range is None:
+            sheet_names = self.get_sheet_names(spreadsheet_id)
+            result = {}
+            for sheet_name in sheet_names:
+                sheet_data = self.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range=sheet_name
+                ).execute()
+                result[sheet_name] = sheet_data.get('values', [])
+            return result
+        else:
+            # Original behavior for specific sheet range
+            result = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=sheet_range
+            ).execute()
+            return result.get('values', [])
+
+    def save_sheet_to_csv(self, spreadsheet_id_or_url,
+                          output_file:Optional[str] = None,
+                          sheet_range:Optional[str] = None):
         """
         Save a spreadsheet to a CSV file.
 
         Args:
             spreadsheet_id_or_url (str): The ID or URL of the spreadsheet.
             output_file (str, optional): Path to the output CSV file. If None, uses the original filename.
-            sheet_range (str, optional): Range of the worksheet.
+            sheet_range (str, optional): Range of the worksheet. If None, saves all sheets to separate CSV files.
 
         Returns:
-            str: Path to the saved CSV file.
+            str or list: Path to the saved CSV file, or list of paths if multiple sheets were saved.
         """
         spreadsheet_id = self.extract_file_id(spreadsheet_id_or_url)
 
         # Get original filename if output_file is None
         if output_file is None:
             metadata = self.get_file_metadata(spreadsheet_id)
-            output_file = f"{metadata['name']}.csv"
+            base_filename = metadata['name']
+        else:
+            base_filename = os.path.splitext(os.path.basename(output_file))[0]
 
-        values = self.get_sheet_values(spreadsheet_id_or_url, sheet_range)
+        # If no sheet range is specified, save all sheets
+        if sheet_range is None:
+            sheet_names = self.get_sheet_names(spreadsheet_id)
+            saved_files = []
 
-        # Get the full path in memory directory
-        full_path = self._get_full_path(output_file)
+            for sheet_name in sheet_names:
+                values = self.get_sheet_values(spreadsheet_id_or_url, sheet_name)
 
-        # Check if the directory exists
-        directory = os.path.dirname(full_path)
-        if not os.path.isdir(directory):
-            logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
-            full_path = os.path.join(self.memory_dir, os.path.basename(output_file))
+                # Create filename for this sheet
+                sheet_filename = f"{base_filename}_{sheet_name}.csv"
+                full_path = self._get_full_path(sheet_filename)
 
-        # Ensure the file path is unique
-        full_path = self._get_unique_filepath(full_path)
+                # Check if the directory exists
+                directory = os.path.dirname(full_path)
+                if not os.path.isdir(directory):
+                    logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
+                    full_path = os.path.join(self.memory_dir, os.path.basename(sheet_filename))
 
-        with open(full_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerows(values)
+                # Ensure the file path is unique
+                full_path = self._get_unique_filepath(full_path)
 
-        logger.info(f"Saved sheet to {full_path}")
-        return full_path
+                with open(full_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerows(values)
+
+                logger.info(f"Saved sheet '{sheet_name}' to {full_path}")
+                saved_files.append(full_path)
+
+            return saved_files
+        else:
+            # Original behavior for specific sheet range
+            values = self.get_sheet_values(spreadsheet_id_or_url, sheet_range)
+
+            # Append .csv if not already in the filename
+            if output_file is None:
+                output_file = f"{base_filename}.csv"
+            elif not output_file.lower().endswith('.csv'):
+                output_file = f"{output_file}.csv"
+
+            full_path = self._get_full_path(output_file)
+
+            # Check if the directory exists
+            directory = os.path.dirname(full_path)
+            if not os.path.isdir(directory):
+                logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
+                full_path = os.path.join(self.memory_dir, os.path.basename(output_file))
+
+            # Ensure the file path is unique
+            full_path = self._get_unique_filepath(full_path)
+
+            with open(full_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerows(values)
+
+            logger.info(f"Saved sheet to {full_path}")
+            return full_path
 
     # Google Drive Methods
 
@@ -258,7 +337,7 @@ class GoogleClient:
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-                print(f"Download {int(status.progress() * 100)}%")
+                logger.info(f"Download {int(status.progress() * 100)}%")
 
         logger.info(f"Downloaded file to {full_path}")
         return full_path
@@ -309,8 +388,8 @@ class GoogleFileInput(BaseModel):
     )
 
     sheet_range: Optional[str] = Field(
-        "Sheet1",
-        description="For Google Sheets only: range of cells to export (e.g., 'Sheet1!A1:D10')"
+        None,
+        description="For Google Sheets only: range of cells to export (e.g., 'Sheet1!A1:D10'). If None, all sheets will be retrieved"
     )
 
 ### Singleton instance
