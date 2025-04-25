@@ -485,7 +485,7 @@ def create_interface():
                     # Agent model selector
                     agent_model_selector = gr.Dropdown(
                         choices=["o3-mini", "gpt-4-turbo", "gpt-4o"],
-                        value="Pick the model",
+                        value="o3-mini",  # Fixed to use a valid default value
                         label="Agent Model",
                         info="Select the model for the AI agent"
                     )
@@ -514,7 +514,7 @@ def create_interface():
                     info="Automatically generate speech for analysis results"
                 )
 
-                # NEW: Enable Audio button for autoplay permission
+                # Enable Audio button for autoplay permission
                 enable_audio_btn = gr.Button("🔊 Enable Audio Autoplay", variant="primary")
 
                 # File upload section for memory files
@@ -639,456 +639,188 @@ def create_interface():
                     interactive=False
                 )
 
-                # IMPROVED: Streaming audio component with enhanced ImprovedAudioPlayer
+                # IMPROVED: Simplified Progressive Streaming Audio Component
                 streaming_audio = gr.HTML(
                     """
                     <div id="streaming-player">
-                        <audio id="stream-audio" controls></audio>
-                        <div id="stream-status">Ready to stream</div>
-                        <button id="start-playback" style="display:none; margin-top:10px; padding:8px 15px; background-color:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer;">Start Playback</button>
-                        <div id="audio-permission-notice" style="margin-top:10px; padding:8px; background-color:#f8f9fa; border-radius:4px; display:none;">
-                            <p style="margin:0; color:#666;">⚠️ Browser autoplay policy requires user interaction before audio can play automatically.</p>
-                            <p style="margin:5px 0 0; color:#666;">Click the "Enable Audio Autoplay" button above to enable autoplay for this session.</p>
-                        </div>
-
-                        <script>
-                        // Track user interaction state
-                        let userInteracted = false;
-
-                        document.addEventListener('click', () => {
-                            userInteracted = true;
-                            // Try to initialize audio context if it exists
-                            if (window.audioPlayer && window.audioPlayer.audioContext) {
-                                window.audioPlayer.audioContext.resume().catch(e => console.warn("Failed to resume AudioContext:", e));
-                            }
-                        }, {once: false});
-
-                        // Create an ImprovedAudioPlayer class with both MediaSource and AudioContext support
-                        class ImprovedAudioPlayer {
-                            constructor() {
-                                this.audioElement = document.getElementById('stream-audio');
-                                this.statusElement = document.getElementById('stream-status');
-                                this.playButton = document.getElementById('start-playback');
-                                this.permissionNotice = document.getElementById('audio-permission-notice');
-
-                                // Initialize both APIs for maximum compatibility
-                                this.initMediaSource();
-                                this.initAudioContext();
-
-                                this.chunksProcessed = 0;
-                                this.isPlaying = false;
-                                this.pendingChunks = [];
-                                this.processing = false;
-                                this.preferredMode = 'mediasource'; // Default mode
-                                this.initialBufferSize = 3; // Number of chunks to buffer before playing
-                                this.initialBufferReady = false;
-
-                                // Set up event listeners
-                                this.setupEventListeners();
-
-                                // Check if we should show permission notice
-                                if (!userInteracted) {
-                                    this.permissionNotice.style.display = 'block';
-                                }
-                            }
-
-                            initMediaSource() {
-                                this.mediaSource = null;
-                                this.sourceBuffer = null;
-                            }
-
-                            initAudioContext() {
-                                try {
-                                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                                    this.gainNode = this.audioContext.createGain();
-                                    this.gainNode.connect(this.audioContext.destination);
-                                    this.audioBuffers = [];
-                                    this.currentSource = null;
-                                    console.log("AudioContext initialized successfully");
-                                } catch (e) {
-                                    console.warn("AudioContext initialization failed:", e);
-                                    this.audioContext = null;
-                                }
-                            }
-
-                            setupEventListeners() {
-                                // Show play button if autoplay fails
-                                this.audioElement.addEventListener('error', (e) => {
-                                    console.error('Audio error:', e, this.audioElement.error);
-                                    this.showPlayButton('Autoplay failed. Click to play.');
-                                });
-
-                                // Manual play button handler
-                                this.playButton.addEventListener('click', () => {
-                                    this.attemptPlay();
-                                    // Hide permission notice after manual play
-                                    this.permissionNotice.style.display = 'none';
-                                });
-                            }
-
-                            async play(stream) {
-                                try {
-                                    this.updateStatus('Setting up audio stream...');
-
-                                    // Reset state
-                                    this.chunksProcessed = 0;
-                                    this.isPlaying = false;
-                                    this.pendingChunks = [];
-                                    this.initialBufferReady = false;
-                                    this.playButton.style.display = 'none';
-
-                                    // Determine best playback method based on browser support
-                                    if (this.audioContext && this.preferredMode === 'audiocontext') {
-                                        await this.playWithAudioContext(stream);
-                                    } else {
-                                        await this.playWithMediaSource(stream);
-                                    }
-
-                                } catch (error) {
-                                    console.error('Audio playback error:', error);
-                                    this.updateStatus(`Error: ${error.message || 'Unknown error'}`);
-                                    this.showPlayButton('Error occurred. Try manual playback?');
-                                    throw error;
-                                }
-                            }
-
-                            async playWithAudioContext(stream) {
-                                this.updateStatus('Using Web Audio API for playback...');
-
-                                // Resume AudioContext (needed due to autoplay policies)
-                                if (this.audioContext.state !== 'running') {
-                                    try {
-                                        await this.audioContext.resume();
-                                        console.log("AudioContext resumed successfully");
-                                    } catch (e) {
-                                        console.warn("Failed to resume AudioContext:", e);
-                                        // Fall back to MediaSource if we can't resume
-                                        return this.playWithMediaSource(stream);
-                                    }
-                                }
-
-                                // Buffer initial chunks before starting playback
-                                const initialChunks = [];
-                                let chunkCount = 0;
-
-                                this.updateStatus("Buffering initial audio...");
-
-                                // First pass: collect initial buffer
-                                for await (const chunk of stream) {
-                                    initialChunks.push(chunk);
-                                    chunkCount++;
-
-                                    if (chunkCount === this.initialBufferSize) {
-                                        this.updateStatus(`Starting playback with ${this.initialBufferSize} chunks buffered`);
-                                        break;
-                                    }
-                                }
-
-                                // Process initial chunks
-                                for (const chunk of initialChunks) {
-                                    try {
-                                        // Decode audio data
-                                        const arrayBuffer = chunk.buffer.slice(0);
-                                        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-
-                                        // Play first chunk immediately
-                                        if (!this.isPlaying) {
-                                            this.playAudioBuffer(audioBuffer);
-                                            this.isPlaying = true;
-                                        } else {
-                                            // Queue for playback
-                                            this.audioBuffers.push(audioBuffer);
-                                        }
-                                    } catch (e) {
-                                        console.error("Error decoding audio chunk:", e);
-                                        // If we can't decode with AudioContext, fall back to MediaSource
-                                        this.preferredMode = 'mediasource';
-                                        return this.playWithMediaSource(stream);
-                                    }
-                                }
-
-                                // Continue with the rest of the stream
-                                for await (const chunk of stream) {
-                                    try {
-                                        const arrayBuffer = chunk.buffer.slice(0);
-                                        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-                                        this.audioBuffers.push(audioBuffer);
-                                        this.chunksProcessed++;
-
-                                        // Update status periodically
-                                        if (this.chunksProcessed % 5 === 0) {
-                                            this.updateStatus(`Streaming... (${this.chunksProcessed} chunks)`);
-                                        }
-                                    } catch (e) {
-                                        console.error("Error processing audio chunk:", e);
-                                    }
-                                }
-
-                                this.updateStatus(`Playback complete (${this.chunksProcessed} chunks)`);
-                            }
-
-                            playAudioBuffer(buffer) {
-                                const source = this.audioContext.createBufferSource();
-                                source.buffer = buffer;
-                                source.connect(this.gainNode);
-
-                                source.onended = () => {
-                                    // Play next buffer if available
-                                    if (this.audioBuffers.length > 0) {
-                                        this.playAudioBuffer(this.audioBuffers.shift());
-                                    } else {
-                                        this.isPlaying = false;
-                                    }
-                                };
-
-                                source.start(0);
-                                this.currentSource = source;
-                            }
-
-                            async playWithMediaSource(stream) {
-                                this.updateStatus('Using MediaSource API for playback...');
-
-                                // Reset MediaSource
-                                this.initMediaSource();
-
-                                // Create new MediaSource
-                                this.mediaSource = new MediaSource();
-                                this.audioElement.src = URL.createObjectURL(this.mediaSource);
-
-                                // Set up MediaSource when it opens
-                                await new Promise(resolve => {
-                                    this.mediaSource.addEventListener('sourceopen', resolve, {once: true});
-                                });
-
-                                this.updateStatus('Detecting audio format and initializing buffer...');
-
-                                // Determine MIME type support with improved detection
-                                let mimeType = 'audio/mpeg';
-                                if (!MediaSource.isTypeSupported(mimeType)) {
-                                    // Try alternatives in order of preference
-                                    const supportedTypes = ['audio/mp4', 'audio/webm', 'audio/aac', 'audio/ogg'];
-                                    let found = false;
-
-                                    for (const type of supportedTypes) {
-                                        if (MediaSource.isTypeSupported(type)) {
-                                            mimeType = type;
-                                            this.updateStatus(`Using ${type} format`);
-                                            found = true;
-                                            break;
-                                        }
-                                    }
-
-                                    if (!found) {
-                                        throw new Error('Browser does not support any compatible audio formats');
-                                    }
-                                }
-
-                                // Create source buffer
-                                this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
-                                this.updateStatus('Buffering audio...');
-
-                                // Handle source buffer updates
-                                this.sourceBuffer.addEventListener('updateend', () => {
-                                    this.processing = false;
-
-                                    // If this is the initial buffer completion, try to play
-                                    if (!this.initialBufferReady && this.chunksProcessed >= this.initialBufferSize) {
-                                        this.initialBufferReady = true;
-                                        this.attemptAutoplay();
-                                    }
-
-                                    this.processNextChunk();
-                                });
-
-                                // Buffer initial chunks before starting playback
-                                const initialChunks = [];
-                                let chunkCount = 0;
-
-                                // First pass: collect initial buffer
-                                for await (const chunk of stream) {
-                                    initialChunks.push(chunk);
-                                    chunkCount++;
-
-                                    if (chunkCount === 1) {
-                                        this.updateStatus("Buffering initial audio...");
-                                    }
-
-                                    if (chunkCount === this.initialBufferSize) {
-                                        this.updateStatus(`Starting playback with ${this.initialBufferSize} chunks buffered`);
-                                        break;
-                                    }
-                                }
-
-                                // Process initial chunks
-                                for (const chunk of initialChunks) {
-                                    await this.addChunk(chunk);
-                                }
-
-                                // Continue with the rest of the stream
-                                for await (const chunk of stream) {
-                                    await this.addChunk(chunk);
-                                }
-
-                                // Wait for any remaining chunks to process
-                                if (this.pendingChunks.length > 0) {
-                                    await new Promise(resolve => {
-                                        const checkComplete = () => {
-                                            if (this.pendingChunks.length === 0 && !this.processing) {
-                                                resolve();
-                                            } else {
-                                                setTimeout(checkComplete, 100);
-                                            }
-                                        };
-                                        checkComplete();
-                                    });
-                                }
-
-                                // Finalize the stream
-                                this.finalizeStream();
-                            }
-
-                            async addChunk(chunk) {
-                                this.pendingChunks.push(chunk);
-                                this.chunksProcessed++;
-
-                                // Update status periodically
-                                if (this.chunksProcessed % 5 === 0) {
-                                    this.updateStatus(`Streaming... (${this.chunksProcessed} chunks)`);
-                                }
-
-                                // Process immediately if not already processing
-                                if (!this.processing) {
-                                    await this.processNextChunk();
-                                }
-                            }
-
-                            async processNextChunk() {
-                                if (this.pendingChunks.length === 0 || this.processing) {
-                                    return;
-                                }
-
-                                this.processing = true;
-                                try {
-                                    const chunk = this.pendingChunks.shift();
-                                    this.sourceBuffer.appendBuffer(new Uint8Array(chunk));
-
-                                    // We'll wait for the updateend event to process next chunk
-                                } catch (error) {
-                                    console.error('Error processing chunk:', error);
-                                    this.updateStatus(`Buffer error: ${error.message}`);
-                                    this.processing = false;
-                                }
-                            }
-
-                            attemptAutoplay() {
-                                // Check if user has interacted with the page
-                                if (!userInteracted) {
-                                    console.log("No user interaction yet, showing play button");
-                                    this.showPlayButton("Click to play (browser requires interaction)");
-                                    this.permissionNotice.style.display = 'block';
-                                    return;
-                                }
-
-                                // Hide permission notice since user has interacted
-                                this.permissionNotice.style.display = 'none';
-
-                                // Try first with muted (more likely to succeed with autoplay policies)
-                                this.audioElement.muted = true;
-
-                                this.audioElement.play()
-                                    .then(() => {
-                                        console.log("Muted playback started, trying to unmute");
-                                        this.isPlaying = true;
-
-                                        // After a slight delay, try to unmute
-                                        setTimeout(() => {
-                                            this.audioElement.muted = false;
-                                            this.updateStatus("Playing audio...");
-                                        }, 1000);
-                                    })
-                                    .catch(e => {
-                                        console.warn("Autoplay failed:", e);
-                                        this.audioElement.muted = false; // Reset muted state
-                                        this.showPlayButton("Autoplay blocked. Click to start playback.");
-                                    });
-                            }
-
-                            attemptPlay() {
-                                this.updateStatus("Starting playback...");
-
-                                this.audioElement.play()
-                                    .then(() => {
-                                        this.isPlaying = true;
-                                        this.playButton.style.display = 'none';
-                                        this.updateStatus("Playing audio...");
-                                        // Update user interaction state
-                                        userInteracted = true;
-                                    })
-                                    .catch(e => {
-                                        console.error("Manual play failed:", e);
-                                        this.updateStatus(`Cannot play: ${e.message}`);
-                                    });
-                            }
-
-                            finalizeStream() {
-                                try {
-                                    // Only end the stream if we have a valid MediaSource
-                                    if (this.mediaSource && this.mediaSource.readyState === 'open') {
-                                        this.mediaSource.endOfStream();
-                                    }
-
-                                    const duration = this.audioElement.duration;
-                                    const durationStr = isNaN(duration) ? 'unknown' : duration.toFixed(1) + 's';
-
-                                    this.updateStatus(`Playback complete (${this.chunksProcessed} chunks, ${durationStr})`);
-
-                                    if (!this.isPlaying) {
-                                        this.showPlayButton("Ready to play");
-                                    }
-                                } catch (error) {
-                                    console.error('Error finalizing stream:', error);
-                                    this.updateStatus(`Error finalizing: ${error.message}`);
-                                }
-                            }
-
-                            updateStatus(message) {
-                                console.log(`[Player] ${message}`);
-                                this.statusElement.textContent = message;
-                            }
-
-                            showPlayButton(message) {
-                                this.updateStatus(message);
-                                this.playButton.style.display = 'block';
-                            }
-
-                            // Method to explicitly enable audio (for the Enable Audio button)
-                            enableAudio() {
-                                userInteracted = true;
-
-                                // Try to resume AudioContext if it exists
-                                if (this.audioContext) {
-                                    this.audioContext.resume()
-                                        .then(() => {
-                                            console.log("AudioContext resumed successfully");
-                                            this.updateStatus("Audio enabled successfully");
-                                            this.permissionNotice.style.display = 'none';
-                                        })
-                                        .catch(e => {
-                                            console.warn("Failed to resume AudioContext:", e);
-                                            this.updateStatus("Partial audio permission granted");
-                                        });
-                                } else {
-                                    this.updateStatus("Audio permission granted");
-                                    this.permissionNotice.style.display = 'none';
-                                }
-
-                                return true;
-                            }
+                      <audio id="stream-audio" controls></audio>
+                      <div id="stream-status">Ready to stream</div>
+                      <button id="start-playback" style="display:none; margin-top:10px; padding:8px 15px; background-color:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer;">Start Playback</button>
+
+                      <script>
+                      // Track user interaction state
+                      let userInteracted = false;
+                      document.addEventListener('click', () => userInteracted = true, {once: true});
+
+                      // Simplified Progressive Audio Player
+                      class ProgressiveAudioPlayer {
+                        constructor() {
+                          // Essential elements
+                          this.audioElement = document.getElementById('stream-audio');
+                          this.statusElement = document.getElementById('stream-status');
+                          this.playButton = document.getElementById('start-playback');
+
+                          // Simple state tracking
+                          this.isPlaying = false;
+                          this.mediaSource = null;
+                          this.sourceBuffer = null;
+                          this.pendingChunks = [];
+                          this.processingChunk = false;
+                          this.startedPlayback = false;
+
+                          // Progressive playback settings
+                          this.progressThreshold = 2; // Start after this many chunks
+                          this.chunksCount = 0;
+
+                          // Setup event listeners
+                          this.playButton.addEventListener('click', () => this.attemptPlay());
                         }
 
-                        // Make the player available globally
-                        window.audioPlayer = new ImprovedAudioPlayer();
-                        </script>
+                        async play(stream) {
+                          try {
+                            this.updateStatus('Loading audio...');
+                            this.reset();
+
+                            // Setup MediaSource
+                            this.mediaSource = new MediaSource();
+                            this.audioElement.src = URL.createObjectURL(this.mediaSource);
+
+                            // Wait for MediaSource to open
+                            await new Promise(resolve => {
+                              this.mediaSource.addEventListener('sourceopen', resolve, {once: true});
+                            });
+
+                            // Setup source buffer with supported format
+                            const mimeType = MediaSource.isTypeSupported('audio/mpeg') ? 
+                                             'audio/mpeg' : 'audio/mp4';
+                            this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
+
+                            // Handle buffer updates
+                            this.sourceBuffer.addEventListener('updateend', () => {
+                              this.processingChunk = false;
+
+                              // Start playback when we hit threshold - PROGRESSIVE PLAYBACK
+                              if (!this.startedPlayback && this.chunksCount >= this.progressThreshold) {
+                                this.startedPlayback = true;
+                                this.attemptAutoplay();
+                              }
+
+                              this.processNextChunk();
+                            });
+
+                            // Process the stream
+                            for await (const chunk of stream) {
+                              this.pendingChunks.push(chunk);
+                              this.chunksCount++;
+
+                              if (!this.processingChunk) {
+                                this.processNextChunk();
+                              }
+                            }
+
+                            // Finalize stream
+                            await this.waitForProcessingToComplete();
+                            this.finalizeStream();
+
+                          } catch (error) {
+                            console.error('Player error:', error);
+                            this.showPlayButton('Error occurred. Try again.');
+                          }
+                        }
+
+                        processNextChunk() {
+                          if (this.pendingChunks.length === 0 || this.processingChunk) return;
+
+                          this.processingChunk = true;
+                          try {
+                            const chunk = this.pendingChunks.shift();
+                            this.sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                          } catch (error) {
+                            this.processingChunk = false;
+                            console.error('Error adding chunk:', error);
+                          }
+                        }
+
+                        attemptAutoplay() {
+                          if (!userInteracted) {
+                            this.showPlayButton('Click to play');
+                            return;
+                          }
+
+                          // Try with muted first (for autoplay policies)
+                          this.audioElement.muted = true;
+                          this.audioElement.play()
+                            .then(() => {
+                              this.isPlaying = true;
+                              setTimeout(() => this.audioElement.muted = false, 100);
+                            })
+                            .catch(() => {
+                              this.audioElement.muted = false;
+                              this.showPlayButton('Click to play');
+                            });
+                        }
+
+                        attemptPlay() {
+                          userInteracted = true;
+                          this.audioElement.play()
+                            .then(() => {
+                              this.isPlaying = true;
+                              this.playButton.style.display = 'none';
+                            })
+                            .catch(e => console.error("Play failed:", e));
+                        }
+
+                        async waitForProcessingToComplete() {
+                          if (this.pendingChunks.length > 0 || this.processingChunk) {
+                            await new Promise(resolve => {
+                              const checkComplete = () => {
+                                if (this.pendingChunks.length === 0 && !this.processingChunk) {
+                                  resolve();
+                                } else {
+                                  setTimeout(checkComplete, 100);
+                                }
+                              };
+                              checkComplete();
+                            });
+                          }
+                        }
+
+                        finalizeStream() {
+                          if (this.mediaSource && this.mediaSource.readyState === 'open') {
+                            this.mediaSource.endOfStream();
+                          }
+
+                          if (!this.isPlaying) {
+                            this.showPlayButton('Ready to play');
+                          }
+                        }
+
+                        updateStatus(message) {
+                          this.statusElement.textContent = message;
+                        }
+
+                        showPlayButton(message) {
+                          this.updateStatus(message);
+                          this.playButton.style.display = 'block';
+                        }
+
+                        reset() {
+                          this.pendingChunks = [];
+                          this.processingChunk = false;
+                          this.isPlaying = false;
+                          this.startedPlayback = false;
+                          this.chunksCount = 0;
+                        }
+
+                        enableAudio() {
+                          userInteracted = true;
+                          return true;
+                        }
+                      }
+
+                      // Create player instance
+                      window.audioPlayer = new ProgressiveAudioPlayer();
+                      </script>
                     </div>
                     """,
                     label="Streaming Audio"
@@ -1157,7 +889,7 @@ def create_interface():
             outputs=[agent_status]
         )
 
-        # NEW: Enable Audio button handler
+        # Enable Audio button handler
         def enable_audio():
             return "Audio enabled for this session"
 
@@ -1427,7 +1159,7 @@ def create_interface():
             outputs=[status_msg, tts_audio]
         )
 
-        # IMPROVED: Streaming speech for analysis with ImprovedAudioPlayer
+        # IMPROVED: Streaming speech for analysis with Progressive Audio Player
         def stream_analysis(analysis_text, voice):
             if not analysis_text:
                 return "No analysis to stream", None
@@ -1451,7 +1183,7 @@ def create_interface():
                 }
 
                 try {
-                    // Use our ImprovedAudioPlayer
+                    // Use our simplified progressive player
                     await window.audioPlayer.play(stream.audio);
                     return ["Streaming processed successfully", null];
                 } catch (error) {
@@ -1462,7 +1194,7 @@ def create_interface():
             """
         )
 
-        # IMPROVED: Analyze and Stream in one step with ImprovedAudioPlayer
+        # IMPROVED: Analyze and Stream in one step with Progressive Audio Player
         def analyze_and_stream(transcription, voice):
             if not transcription:
                 return "No transcription to analyze", "", "", None
@@ -1494,7 +1226,7 @@ def create_interface():
                 }
 
                 try {
-                    // Use our ImprovedAudioPlayer
+                    // Use our simplified progressive player
                     await window.audioPlayer.play(stream.audio);
                     return ["Analysis completed and streamed successfully", analysis, thinking, null];
                 } catch (error) {
