@@ -977,7 +977,7 @@ def create_interface():
                     )
 
                     # Use the download_google_file tool function
-                    result = download_google_file(params)
+                    result = download_google_file(params.model_dump())
 
                     if "Successfully downloaded" in result:
                         # Extract the filepath from the result message
