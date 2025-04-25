@@ -390,6 +390,9 @@ class GoogleClient:
                 file_type = "Google Drive file"
 
             logger.info(f"Successfully downloaded {file_type} to: {downloaded_files}")
+        except Exception as e:
+            logger.error(f"Error downloading file: {str(e)}")
+
         return downloaded_files if isinstance(downloaded_files, list) else [downloaded_files]
 
 
