@@ -426,22 +426,17 @@ class SpacesTranscriber:
                 return None, result
 
             if stream:
+                # For streaming, create a generator that yields chunks from the streaming response
+                def audio_stream_generator():
+                    # We need to enter the context manager manually
+                    with result as streaming_response:
+                        for chunk in streaming_response.iter_bytes(chunk_size=4096):
+                            yield chunk
+
                 # Return streaming configuration for Gradio
-                return {"audio": result, "streaming": True}, "Streaming speech..."
+                return {"audio": audio_stream_generator(), "streaming": True}, "Streaming speech..."
             else:
-                # For Gradio's audio component with file path
-                temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
-                temp_path = temp_file.name
-
-                # Write bytes to file if we got bytes back
-                if isinstance(result, bytes):
-                    with open(temp_path, 'wb') as f:
-                        f.write(result)
-                    # Register for cleanup
-                    atexit.register(lambda: os.unlink(temp_path) if os.path.exists(temp_path) else None)
-                    return temp_path, "Speech generated successfully"
-
-                # If we got a path back (stream=False was used), just return it
+                # For non-streaming, we get a file path back
                 return result, "Speech generated successfully"
 
         except Exception as e:

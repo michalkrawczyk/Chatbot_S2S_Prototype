@@ -152,31 +152,35 @@ class OpenAIClient:
             stream (bool): Whether to use streaming mode
 
         Returns:
-            generator or str: Audio stream generator or file path
+            bytes or streaming_response or str: Audio content, streaming response, or file path
         """
         if not self.client:
             return "Error: Not connected to OpenAI API"
 
         try:
-            response_format="mp3"
-            # Create streaming response from OpenAI
-            response = self.client.audio.speech.create(
-                model="tts-1",
-                voice=voice,
-                input=text,
-                response_format=response_format,
-                stream=True  # Always use streaming for efficiency
-            )
-
             if stream:
-                # Return the streaming response directly as a generator
+                # Use the streaming response approach
+                response = self.client.audio.speech.with_streaming_response.create(
+                    model="tts-1",
+                    voice=voice,
+                    input=text,
+                    response_format="mp3"
+                )
                 return response
             else:
-                # Save to file for non-streaming use
+                # Non-streaming approach for saving to file
+                response = self.client.audio.speech.create(
+                    model="tts-1",
+                    voice=voice,
+                    input=text
+                )
+
+                # Save to file
                 temp_dir = Path(tempfile.gettempdir()) / "spaces_audio"
                 temp_dir.mkdir(exist_ok=True, parents=True)
-                output_path = str(temp_dir / f"tts_{int(time.time())}.{response_format}")
+                output_path = str(temp_dir / f"tts_{int(time.time())}.mp3")
                 response.stream_to_file(output_path)
+                logger.info(f"Text-to-speech audio saved to: {output_path}")
                 return output_path
 
         except Exception as e:
