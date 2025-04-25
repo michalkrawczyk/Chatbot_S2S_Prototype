@@ -434,7 +434,7 @@ class SpacesTranscriber:
                             yield chunk
 
                 # Return streaming configuration for Gradio
-                return {"audio": audio_stream_generator(), "streaming": True}, "Streaming speech..."
+                return {"audio": audio_stream_generator(), "streaming": True, "autoplay": True}, "Streaming speech..."
             else:
                 # For non-streaming, we get a file path back
                 return result, "Speech generated successfully"
@@ -610,6 +610,7 @@ def create_interface():
                 # Copy and download buttons for transcription
                 with gr.Row():
                     analyze_btn = gr.Button("Analyze Transcription", variant="primary")
+                    analyze_and_stream_btn = gr.Button("🔊 Analyze & Stream", variant="primary")
 
             # Output area for analysis
             with gr.Column(scale=2):
@@ -638,7 +639,7 @@ def create_interface():
                 streaming_audio = gr.HTML(
                     """
                     <div id="streaming-player">
-                        <audio id="stream-audio" controls></audio>
+                        <audio id="stream-audio" controls autoplay></audio>
                         <div id="stream-status">Ready to stream</div>
                     </div>
                     """,
@@ -1001,10 +1002,18 @@ def create_interface():
 
                     mediaSource.addEventListener('sourceopen', async () => {
                         const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                        let autoPlayTriggered = false;
 
                         for await (const chunk of stream.audio) {
                             // Add audio chunk to buffer
                             sourceBuffer.appendBuffer(new Uint8Array(chunk));
+
+                            // Auto-play when we have enough data
+                            if (!autoPlayTriggered && stream.autoplay) {
+                                audioElement.play().catch(e => console.error("Auto-play failed:", e));
+                                autoPlayTriggered = true;
+                            }
+
                             // Wait for update to complete
                             await new Promise(resolve => {
                                 sourceBuffer.addEventListener('updateend', resolve, {once: true});
@@ -1015,12 +1024,81 @@ def create_interface():
                         statusEl.textContent = 'Streaming completed';
                     });
 
-                    audioElement.play();
                     return [status, null];
                 } catch (error) {
                     console.error('Streaming error:', error);
                     statusEl.textContent = `Error: ${error.message}`;
                     return [status, null];
+                }
+            }
+            """
+        )
+
+        # ADDED: Analyze and Stream in one step
+        def analyze_and_stream(transcription, voice):
+            if not transcription:
+                return "No transcription to analyze", "", "", None
+
+            try:
+                # First analyze
+                analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
+
+                # Add to agent memory
+                transcriber.add_to_agent_memory(transcription, analysis_result)
+
+                # Then stream the result
+                stream_result, status = transcriber.generate_speech_from_text(analysis_result, voice, stream=True)
+
+                return "Analysis completed and streaming", analysis_result, thinking_process, stream_result
+            except Exception as e:
+                logger.error(f"Error in analyze_and_stream: {str(e)}")
+                return f"Error: {str(e)}", "", "", None
+
+        # Connect the analyze and stream button
+        analyze_and_stream_btn.click(
+            fn=analyze_and_stream,
+            inputs=[transcription_output, voice_selector],
+            outputs=[status_msg, analysis_output, thinking_display, streaming_audio],
+            js="""
+            async function(status, analysis, thinking, stream) {
+                if (!stream || !stream.streaming) {
+                    document.getElementById('stream-status').textContent = 'Stream failed';
+                    return [status, analysis, thinking, null];
+                }
+
+                const statusEl = document.getElementById('stream-status');
+                statusEl.textContent = 'Streaming analysis...';
+
+                try {
+                    const audioElement = document.getElementById('stream-audio');
+                    const mediaSource = new MediaSource();
+                    audioElement.src = URL.createObjectURL(mediaSource);
+
+                    mediaSource.addEventListener('sourceopen', async () => {
+                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+
+                        for await (const chunk of stream.audio) {
+                            // Add audio chunk to buffer
+                            sourceBuffer.appendBuffer(new Uint8Array(chunk));
+
+                            // Wait for update to complete
+                            await new Promise(resolve => {
+                                sourceBuffer.addEventListener('updateend', resolve, {once: true});
+                            });
+                        }
+
+                        mediaSource.endOfStream();
+                        statusEl.textContent = 'Streaming completed';
+                    });
+
+                    // Auto-play the audio
+                    audioElement.play().catch(e => console.error("Auto-play failed:", e));
+
+                    return [status, analysis, thinking, null];
+                } catch (error) {
+                    console.error('Streaming error:', error);
+                    statusEl.textContent = `Error: ${error.message}`;
+                    return [status, analysis, thinking, null];
                 }
             }
             """
