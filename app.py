@@ -517,15 +517,18 @@ def create_interface():
                 with gr.Group():
                     gr.Markdown("### Upload Files to Memory")
 
-                    # Add Google URL input
+                    # Add Google URL input - make sure it's properly displayed
                     google_url_input = gr.Textbox(
                         label="Google Drive/Sheets URL",
                         placeholder="Paste Google Drive or Google Sheets URL here",
                         info="Download file directly from Google Drive or Sheets"
                     )
 
+                    # Add a small vertical space for better separation
+                    gr.Markdown("**OR**")
+
                     memory_files_upload = gr.File(
-                        label="Upload Files",
+                        label="Upload Local Files",
                         file_count="multiple",
                         type="filepath",
                         file_types=list(SUPPORTED_FILETYPES)
