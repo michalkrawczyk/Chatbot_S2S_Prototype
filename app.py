@@ -395,6 +395,7 @@ class SpacesTranscriber:
             self.agent_memory = self.agent_memory[-max_memory_items:]
 
     # UPDATED METHOD for Generate Speech with Streaming Support
+    # Now all audio is generated as streaming for consistency
     def generate_speech_from_text(self, text, voice="alloy", stream=True):
         """
         Generate speech from text using OpenAI's TTS API with streaming support
@@ -402,10 +403,10 @@ class SpacesTranscriber:
         Args:
             text (str): Text to convert to speech
             voice (str): Voice to use
-            stream (bool): Whether to use streaming mode
+            stream (bool): Whether to use streaming mode (always True now for consistency)
 
         Returns:
-            tuple: (audio_data or path or dict, status message)
+            tuple: (streaming audio dict, status message)
         """
         if not text:
             return None, "No text provided for speech synthesis"
@@ -420,24 +421,20 @@ class SpacesTranscriber:
                 text = text[:max_chars] + "... (text truncated for speech synthesis)"
 
             # Get audio from OpenAI
-            result = self.openai_client.text_to_speech(text, voice, stream=stream)
+            result = self.openai_client.text_to_speech(text, voice, stream=True)  # Always use streaming
 
             if isinstance(result, str) and result.startswith("Error"):
                 return None, result
 
-            if stream:
-                # For streaming, create a generator that yields chunks from the streaming response
-                def audio_stream_generator():
-                    # We need to enter the context manager manually
-                    with result as streaming_response:
-                        for chunk in streaming_response.iter_bytes(chunk_size=4096):
-                            yield chunk
+            # For streaming, create a generator that yields chunks from the streaming response
+            def audio_stream_generator():
+                # We need to enter the context manager manually
+                with result as streaming_response:
+                    for chunk in streaming_response.iter_bytes(chunk_size=4096):
+                        yield chunk
 
-                # Return streaming configuration for Gradio
-                return {"audio": audio_stream_generator(), "streaming": True, "autoplay": True}, "Streaming speech..."
-            else:
-                # For non-streaming, we get a file path back
-                return result, "Speech generated successfully"
+            # Return streaming configuration for Gradio
+            return {"audio": audio_stream_generator(), "streaming": True, "autoplay": True}, "Streaming speech..."
 
         except Exception as e:
             logger.error(f"Error in speech generation: {str(e)}")
@@ -629,18 +626,12 @@ def create_interface():
                     speak_analysis_btn = gr.Button("🔊 Speak Analysis", variant="secondary")
                     stream_analysis_btn = gr.Button("🔊 Stream Analysis", variant="primary")
 
-                tts_audio = gr.Audio(
-                    label="Analysis Audio",
-                    type="filepath",
-                    interactive=False
-                )
-
-                # UPDATED: Streaming audio component with LocalAudioPlayer
+                # UPDATED: Enhanced streaming audio component with LocalAudioPlayer
                 streaming_audio = gr.HTML(
                     """
                     <div id="streaming-player">
                         <audio id="stream-audio" controls></audio>
-                        <div id="stream-status">Ready to stream</div>
+                        <div id="stream-status">Ready to play audio</div>
                         <button id="start-playback" style="display:none; margin-top:10px; padding:8px 15px; background-color:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer;">Start Playback</button>
 
                         <script>
@@ -665,7 +656,7 @@ def create_interface():
                                 // Show play button if autoplay fails
                                 this.audioElement.addEventListener('error', (e) => {
                                     console.error('Audio error:', e, this.audioElement.error);
-                                    this.showPlayButton('Autoplay failed. Click to play.');
+                                    this.showPlayButton('Playback error. Click to try again.');
                                 });
 
                                 // Manual play button handler
@@ -859,7 +850,7 @@ def create_interface():
                         </script>
                     </div>
                     """,
-                    label="Streaming Audio"
+                    label="Audio Player"
                 )
 
                 # Thinking process display
@@ -978,7 +969,7 @@ def create_interface():
                 # Default values in case analysis fails
                 analysis_result = ""
                 thinking_process = ""
-                tts_audio_path = None
+                stream_result = None
 
                 # Automatically analyze if enabled
                 if auto_analyze_value and transcription and not transcription.startswith("Error"):
@@ -990,10 +981,9 @@ def create_interface():
 
                         # Generate speech if auto-speak is enabled
                         if auto_speak_value:
-                            tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result,
-                                                                                               voice_value,
-                                                                                               stream=False)
-                            if tts_audio_path:
+                            stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result,
+                                                                                              voice_value)
+                            if stream_result:
                                 status_msg += " with speech"
                             else:
                                 status_msg += f" (speech generation failed: {tts_status})"
@@ -1002,7 +992,7 @@ def create_interface():
                         analysis_result = f"Analysis error: {str(e)}"
                         thinking_process = ""
 
-                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process, tts_audio_path
+                return status_msg, audio_path, transcription or "", duration, analysis_result, thinking_process, stream_result
             except Exception as e:
                 logger.error(f"Error in handle_recording_wrapper: {str(e)}")
                 return f"Error processing recording: {str(e)}", None, "", 0, "", "", None
@@ -1011,7 +1001,7 @@ def create_interface():
             fn=handle_recording_with_analysis,
             inputs=[audio_recorder],  # Only the audio recorder data is passed
             outputs=[status_msg, audio_playback, transcription_output, current_duration, analysis_output,
-                     thinking_display, tts_audio]
+                     thinking_display, streaming_audio]
         ).then(
             fn=update_recording_info,
             inputs=[current_duration],
@@ -1048,7 +1038,7 @@ def create_interface():
                 # Analyze
                 analysis_result = ""
                 thinking_process = ""
-                tts_audio_path = None
+                stream_result = None
 
                 if transcription and not transcription.startswith("Error"):
                     analysis_result, thinking_process = transcriber.analyze_transcription(transcription)
@@ -1059,14 +1049,13 @@ def create_interface():
 
                     # Generate speech if auto-speak is enabled
                     if auto_speak_value:
-                        tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
-                                                                                           stream=False)
-                        if not tts_audio_path:
+                        stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                        if not stream_result:
                             status_msg += f" (speech generation failed: {tts_status})"
 
                 conditional_logger_info(
                     f"status_msg: {status_msg}, transcription: {transcription}, analysis_result: {analysis_result}")
-                return status_msg, transcription or "", analysis_result, thinking_process, tts_audio_path
+                return status_msg, transcription or "", analysis_result, thinking_process, stream_result
             except Exception as e:
                 logger.error(f"Error processing uploaded audio: {str(e)}")
                 conditional_logger_info(traceback.format_exc())
@@ -1075,7 +1064,7 @@ def create_interface():
         upload_transcribe_btn.click(
             fn=process_uploaded_audio_with_analysis,
             inputs=[audio_upload, language_selector, api_key_input],
-            outputs=[upload_status, transcription_output, analysis_output, thinking_display, tts_audio]
+            outputs=[upload_status, transcription_output, analysis_output, thinking_display, streaming_audio]
         )
 
         # Analyze text input
@@ -1100,14 +1089,13 @@ def create_interface():
                 transcriber.add_to_agent_memory(text, analysis_result)
 
                 # Generate speech if auto-speak is enabled
-                tts_audio_path = None
+                stream_result = None
                 if auto_speak_value:
-                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
-                                                                                       stream=False)
-                    if not tts_audio_path:
+                    stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    if not stream_result:
                         return f"Text analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
-                return "Text analysis completed", analysis_result, thinking_process, tts_audio_path
+                return "Text analysis completed", analysis_result, thinking_process, stream_result
             except Exception as e:
                 logger.error(f"Error analyzing text: {str(e)}")
                 conditional_logger_info(traceback.format_exc())
@@ -1116,7 +1104,7 @@ def create_interface():
         analyze_text_btn.click(
             fn=analyze_text_input,
             inputs=[text_input],
-            outputs=[status_msg, analysis_output, thinking_display, tts_audio]
+            outputs=[status_msg, analysis_output, thinking_display, streaming_audio]
         ).then(
             fn=lambda: update_memory_display(),
             inputs=[],
@@ -1144,14 +1132,13 @@ def create_interface():
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
                 # Generate speech if auto-speak is enabled
-                tts_audio_path = None
+                stream_result = None
                 if auto_speak_value:
-                    tts_audio_path, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value,
-                                                                                       stream=False)
-                    if not tts_audio_path:
+                    stream_result, tts_status = transcriber.generate_speech_from_text(analysis_result, voice_value)
+                    if not stream_result:
                         return f"Analysis completed but speech generation failed: {tts_status}", analysis_result, thinking_process, None
 
-                return "Analysis completed", analysis_result, thinking_process, tts_audio_path
+                return "Analysis completed", analysis_result, thinking_process, stream_result
             except Exception as e:
                 logger.error(f"Error in analyze_transcription: {str(e)}")
                 return f"Analysis error: {str(e)}", "", "", None
@@ -1159,21 +1146,21 @@ def create_interface():
         analyze_btn.click(
             fn=analyze_current_transcription,
             inputs=[transcription_output],
-            outputs=[status_msg, analysis_output, thinking_display, tts_audio]
+            outputs=[status_msg, analysis_output, thinking_display, streaming_audio]
         ).then(
             fn=lambda: update_memory_display(),
             inputs=[],
             outputs=[memory_display]
         )
 
-        # Regular speech (non-streaming) for analysis
+        # UPDATED: Speak analysis now uses streaming
         def speak_analysis(analysis_text, voice):
             if not analysis_text:
                 return "No analysis to speak", None
 
             try:
-                audio_path, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=False)
-                return status, audio_path
+                stream_result, status = transcriber.generate_speech_from_text(analysis_text, voice)
+                return status, stream_result
             except Exception as e:
                 logger.error(f"Error in speech generation: {str(e)}")
                 return f"Speech generation error: {str(e)}", None
@@ -1181,24 +1168,28 @@ def create_interface():
         speak_analysis_btn.click(
             fn=speak_analysis,
             inputs=[analysis_output, voice_selector],
-            outputs=[status_msg, tts_audio]
+            outputs=[status_msg, streaming_audio],
+            js="""
+            async function(status, stream) {
+                if (!stream || !stream.streaming) {
+                    return ["Stream failed: No valid stream data", null];
+                }
+
+                try {
+                    // Use our LocalAudioPlayer
+                    await window.audioPlayer.play(stream.audio);
+                    return ["Streaming processed successfully", null];
+                } catch (error) {
+                    console.error('Streaming error:', error);
+                    return [`Streaming error: ${error.message || 'Unknown error'}`, null];
+                }
+            }
+            """
         )
 
-        # UPDATED: Streaming speech for analysis with LocalAudioPlayer
-        def stream_analysis(analysis_text, voice):
-            if not analysis_text:
-                return "No analysis to stream", None
-
-            try:
-                # Get streaming response
-                stream_result, status = transcriber.generate_speech_from_text(analysis_text, voice, stream=True)
-                return status, stream_result
-            except Exception as e:
-                logger.error(f"Streaming error: {str(e)}")
-                return f"Streaming error: {str(e)}", None
-
+        # Stream analysis (same as speak analysis now that we consolidated the audio players)
         stream_analysis_btn.click(
-            fn=stream_analysis,
+            fn=speak_analysis,
             inputs=[analysis_output, voice_selector],
             outputs=[status_msg, streaming_audio],
             js="""
@@ -1232,7 +1223,7 @@ def create_interface():
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
                 # Then stream the result
-                stream_result, status = transcriber.generate_speech_from_text(analysis_result, voice, stream=True)
+                stream_result, status = transcriber.generate_speech_from_text(analysis_result, voice)
 
                 return "Analysis completed and streaming", analysis_result, thinking_process, stream_result
             except Exception as e:
