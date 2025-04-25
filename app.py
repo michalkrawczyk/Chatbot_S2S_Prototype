@@ -635,12 +635,18 @@ def create_interface():
                     interactive=False
                 )
 
-                # Streaming audio component
+                # UPDATED: Streaming audio component with improved autoplay
                 streaming_audio = gr.HTML(
                     """
                     <div id="streaming-player">
-                        <audio id="stream-audio" controls autoplay></audio>
+                        <audio id="stream-audio" controls></audio>
                         <div id="stream-status">Ready to stream</div>
+                        <script>
+                            // Ensure the audio element is ready for autoplay
+                            document.getElementById('stream-audio').oncanplaythrough = function() {
+                                this.play().catch(e => console.error("Autoplay prevented:", e));
+                            };
+                        </script>
                     </div>
                     """,
                     label="Streaming Audio"
@@ -968,7 +974,7 @@ def create_interface():
             outputs=[status_msg, tts_audio]
         )
 
-        # ADDED: Streaming speech for analysis
+        # UPDATED: Streaming speech for analysis with improved status updates
         def stream_analysis(analysis_text, voice):
             if not analysis_text:
                 return "No analysis to stream", None
@@ -993,48 +999,87 @@ def create_interface():
                 }
 
                 const statusEl = document.getElementById('stream-status');
-                statusEl.textContent = 'Streaming...';
+                statusEl.textContent = 'Preparing stream...';
 
                 try {
                     const audioElement = document.getElementById('stream-audio');
                     const mediaSource = new MediaSource();
                     audioElement.src = URL.createObjectURL(mediaSource);
 
+                    // Create a function to update the status
+                    const updateStatus = (message) => {
+                        statusEl.textContent = message;
+                        // Also update the Gradio status
+                        return ["Streaming: " + message, null];
+                    };
+
+                    let result = updateStatus("Starting stream...");
+
                     mediaSource.addEventListener('sourceopen', async () => {
-                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                        let autoPlayTriggered = false;
+                        try {
+                            const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                            let chunksProcessed = 0;
 
-                        for await (const chunk of stream.audio) {
-                            // Add audio chunk to buffer
-                            sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                            // Process each chunk
+                            for await (const chunk of stream.audio) {
+                                try {
+                                    // Add audio chunk to buffer
+                                    sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                                    chunksProcessed++;
 
-                            // Auto-play when we have enough data
-                            if (!autoPlayTriggered && stream.autoplay) {
-                                audioElement.play().catch(e => console.error("Auto-play failed:", e));
-                                autoPlayTriggered = true;
+                                    // Update status periodically
+                                    if (chunksProcessed % 5 === 0) {
+                                        result = updateStatus(`Streaming... (${chunksProcessed} chunks)`);
+                                    }
+
+                                    // Force play after first chunk
+                                    if (chunksProcessed === 1) {
+                                        audioElement.play()
+                                            .then(() => console.log("Playback started"))
+                                            .catch(e => console.error("Autoplay failed:", e));
+                                    }
+
+                                    // Wait for update to complete
+                                    await new Promise(resolve => {
+                                        sourceBuffer.addEventListener('updateend', resolve, {once: true});
+                                    });
+                                } catch (chunkError) {
+                                    console.error('Error processing chunk:', chunkError);
+                                    result = updateStatus(`Error processing chunk: ${chunkError.message}`);
+                                }
                             }
 
-                            // Wait for update to complete
-                            await new Promise(resolve => {
-                                sourceBuffer.addEventListener('updateend', resolve, {once: true});
-                            });
+                            mediaSource.endOfStream();
+                            result = updateStatus(`Streaming completed (${chunksProcessed} chunks processed)`);
+                        } catch (sourceError) {
+                            console.error('Source buffer error:', sourceError);
+                            result = updateStatus(`Source buffer error: ${sourceError.message}`);
                         }
-
-                        mediaSource.endOfStream();
-                        statusEl.textContent = 'Streaming completed';
                     });
 
-                    return [status, null];
+                    // Add error handling for MediaSource
+                    mediaSource.addEventListener('error', (e) => {
+                        console.error('MediaSource error:', e);
+                        result = updateStatus(`MediaSource error: ${e.message || 'Unknown error'}`);
+                    });
+
+                    // Add error handling for audio element
+                    audioElement.addEventListener('error', (e) => {
+                        console.error('Audio element error:', e);
+                        result = updateStatus(`Audio playback error: ${e.message || audioElement.error?.message || 'Unknown error'}`);
+                    });
+
+                    return result;
                 } catch (error) {
-                    console.error('Streaming error:', error);
-                    statusEl.textContent = `Error: ${error.message}`;
-                    return [status, null];
+                    console.error('Streaming setup error:', error);
+                    statusEl.textContent = `Setup error: ${error.message}`;
+                    return [`Streaming setup error: ${error.message}`, null];
                 }
             }
             """
         )
 
-        # ADDED: Analyze and Stream in one step
+        # UPDATED: Analyze and Stream in one step with improved status updates
         def analyze_and_stream(transcription, voice):
             if not transcription:
                 return "No transcription to analyze", "", "", None
@@ -1054,7 +1099,7 @@ def create_interface():
                 logger.error(f"Error in analyze_and_stream: {str(e)}")
                 return f"Error: {str(e)}", "", "", None
 
-        # Connect the analyze and stream button
+        # Connect the analyze and stream button with improved JavaScript
         analyze_and_stream_btn.click(
             fn=analyze_and_stream,
             inputs=[transcription_output, voice_selector],
@@ -1067,38 +1112,81 @@ def create_interface():
                 }
 
                 const statusEl = document.getElementById('stream-status');
-                statusEl.textContent = 'Streaming analysis...';
+                statusEl.textContent = 'Preparing analysis stream...';
 
                 try {
                     const audioElement = document.getElementById('stream-audio');
                     const mediaSource = new MediaSource();
                     audioElement.src = URL.createObjectURL(mediaSource);
 
+                    // Create a function to update the status
+                    const updateStatus = (message) => {
+                        statusEl.textContent = message;
+                        // Also update the Gradio status
+                        return [`Analysis: ${message}`, analysis, thinking, null];
+                    };
+
+                    let result = updateStatus("Starting stream...");
+
                     mediaSource.addEventListener('sourceopen', async () => {
-                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                        try {
+                            const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                            let chunksProcessed = 0;
 
-                        for await (const chunk of stream.audio) {
-                            // Add audio chunk to buffer
-                            sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                            // Process each chunk
+                            for await (const chunk of stream.audio) {
+                                try {
+                                    // Add audio chunk to buffer
+                                    sourceBuffer.appendBuffer(new Uint8Array(chunk));
+                                    chunksProcessed++;
 
-                            // Wait for update to complete
-                            await new Promise(resolve => {
-                                sourceBuffer.addEventListener('updateend', resolve, {once: true});
-                            });
+                                    // Update status periodically
+                                    if (chunksProcessed % 5 === 0) {
+                                        result = updateStatus(`Streaming... (${chunksProcessed} chunks)`);
+                                    }
+
+                                    // Force play after first chunk
+                                    if (chunksProcessed === 1) {
+                                        audioElement.play()
+                                            .then(() => console.log("Playback started"))
+                                            .catch(e => console.error("Autoplay failed:", e));
+                                    }
+
+                                    // Wait for update to complete
+                                    await new Promise(resolve => {
+                                        sourceBuffer.addEventListener('updateend', resolve, {once: true});
+                                    });
+                                } catch (chunkError) {
+                                    console.error('Error processing chunk:', chunkError);
+                                    result = updateStatus(`Error processing chunk: ${chunkError.message}`);
+                                }
+                            }
+
+                            mediaSource.endOfStream();
+                            result = updateStatus(`Streaming completed (${chunksProcessed} chunks processed)`);
+                        } catch (sourceError) {
+                            console.error('Source buffer error:', sourceError);
+                            result = updateStatus(`Source buffer error: ${sourceError.message}`);
                         }
-
-                        mediaSource.endOfStream();
-                        statusEl.textContent = 'Streaming completed';
                     });
 
-                    // Auto-play the audio
-                    audioElement.play().catch(e => console.error("Auto-play failed:", e));
+                    // Add error handling for MediaSource
+                    mediaSource.addEventListener('error', (e) => {
+                        console.error('MediaSource error:', e);
+                        result = updateStatus(`MediaSource error: ${e.message || 'Unknown error'}`);
+                    });
 
-                    return [status, analysis, thinking, null];
+                    // Add error handling for audio element
+                    audioElement.addEventListener('error', (e) => {
+                        console.error('Audio element error:', e);
+                        result = updateStatus(`Audio playback error: ${e.message || audioElement.error?.message || 'Unknown error'}`);
+                    });
+
+                    return result;
                 } catch (error) {
-                    console.error('Streaming error:', error);
-                    statusEl.textContent = `Error: ${error.message}`;
-                    return [status, analysis, thinking, null];
+                    console.error('Streaming setup error:', error);
+                    statusEl.textContent = `Setup error: ${error.message}`;
+                    return [`Analysis streaming setup error: ${error.message}`, analysis, thinking, null];
                 }
             }
             """
