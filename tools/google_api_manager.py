@@ -370,6 +370,28 @@ class GoogleClient:
 
         return self.download_file(files[0]['id'], output_file)
 
+    def simplified_download(self, file_id_or_url):
+        #TODO: docs
+        downloaded_files = []
+        try:
+            is_sheet = "spreadsheets" in file_id_or_url or "sheets.google.com" in file_id_or_url
+
+            if is_sheet:
+                # Export Google Sheet as CSV
+                downloaded_files = self.save_sheet_to_csv(
+                    spreadsheet_id_or_url=file_id_or_url
+                )
+                file_type = "Google Sheet as CSV"
+            else:
+                # Download regular Google Drive file
+                downloaded_files = GOOGLE_API_CLIENT.download_file(
+                    file_id_or_url=file_id_or_url
+                )
+                file_type = "Google Drive file"
+
+            logger.info(f"Successfully downloaded {file_type} to: {downloaded_files}")
+        return downloaded_files if isinstance(downloaded_files, list) else [downloaded_files]
+
 
 
 

@@ -18,7 +18,7 @@ from openai_client import OpenAIClient, SUPPORT_LANGUAGES
 
 import traceback
 
-from tools import download_google_file
+from tools import GOOGLE_API_CLIENT
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -969,32 +969,26 @@ def create_interface():
                 try:
                     logger.info(f"Downloading file from Google URL: {google_url}")
 
-                    params = {
-                        "file_url": google_url,
-                        "output_filename": None,
-                        "sheet_range": None
-                    }
+                    # Use the simplified_download method directly
+                    downloaded_files = GOOGLE_API_CLIENT.simplified_download(google_url)
 
-                    # Use the download_google_file tool function
-                    result = download_google_file.invoke({"params": params})
+                    if downloaded_files:
+                        for filepath in downloaded_files:
+                            filename = os.path.basename(filepath)
 
-                    if "Successfully downloaded" in result:
-                        # Extract the filepath from the result message
-                        filepath = result.split("to: ")[1].strip()
-                        filename = os.path.basename(filepath)
+                            # Move the file to memory_files directory if it's not already there
+                            if not filepath.startswith(str(transcriber.config.memory_files_dir)):
+                                dest_path = transcriber.config.memory_files_dir / filename
+                                shutil.copy(filepath, dest_path)
+                                filepath = str(dest_path)
 
-                        # Move the file to memory_files directory if it's not already there
-                        if not filepath.startswith(str(transcriber.config.memory_files_dir)):
-                            dest_path = transcriber.config.memory_files_dir / filename
-                            shutil.copy(filepath, dest_path)
-                            filepath = str(dest_path)
+                            saved_files.append(filename)
+                            last_file = filepath  # Keep track of the last file for context
 
-                        saved_files.append(filename)
-                        last_file = filepath
-                        logger.info(f"Successfully downloaded file from Google: {filename}")
+                        logger.info(f"Successfully downloaded files from Google: {', '.join(saved_files)}")
                     else:
-                        logger.error(f"Failed to download file: {result}")
-                        return result
+                        logger.error("No files were downloaded from the Google URL")
+                        return "No files were downloaded from the Google URL"
 
                 except Exception as e:
                     logger.error(f"Error downloading file from Google URL {google_url}: {str(e)}")
