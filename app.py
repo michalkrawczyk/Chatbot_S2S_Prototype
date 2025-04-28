@@ -909,6 +909,7 @@ def create_interface():
 
             # Extract audio data and sample rate
             sample_rate, audio_array = audio_data
+            logger.info(f"Recording received: {len(audio_array)} samples at {sample_rate}Hz")
 
             # Get parameters from UI components safely
             try:

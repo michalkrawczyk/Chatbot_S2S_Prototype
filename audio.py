@@ -39,6 +39,16 @@ class AudioProcessor:
             return None, "No audio recorded", 0
 
         try:
+            logger.info(
+                f"Audio data type: {type(audio_data)}, shape: {audio_data.shape if hasattr(audio_data, 'shape') else 'no shape'}, sample_rate: {sample_rate}")
+
+            # Check if audio data is stereo (has shape [N, 2])
+            if hasattr(audio_data, 'ndim') and audio_data.ndim > 1 and audio_data.shape[1] == 2:
+                logger.info(f"Converting stereo audio to mono, shape before: {audio_data.shape}")
+                # Convert stereo to mono by averaging channels
+                audio_data = np.mean(audio_data, axis=1)
+                logger.info(f"Shape after conversion: {audio_data.shape}")
+
             # Check recording length
             duration_seconds = len(audio_data) / sample_rate
             logger.info(f"Processing recording: {duration_seconds:.2f}s at {sample_rate}Hz")
@@ -56,6 +66,9 @@ class AudioProcessor:
 
             # Save the audio file
             try:
+                logger.info(f"Audio data: type={type(audio_data)}, shape={audio_data.shape}, dtype={audio_data.dtype}")
+                logger.info(
+                    f"Audio range: min={np.min(audio_data)}, max={np.max(audio_data)}, mean={np.mean(audio_data)}")
                 # Convert to int16 format for better compatibility with Whisper
                 audio_data_int16 = (audio_data * 32767).astype(np.int16)
 
