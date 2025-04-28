@@ -908,7 +908,7 @@ def create_interface():
                 return "Invalid or no audio recorded", None, "", 0, "", "", None
 
             # Extract audio data and sample rate
-            audio_array, sample_rate = audio_data
+            sample_rate, audio_array = audio_data
 
             # Get parameters from UI components safely
             try:
