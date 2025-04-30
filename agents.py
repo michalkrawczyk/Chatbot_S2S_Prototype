@@ -10,26 +10,31 @@ from langgraph.graph import END, START, StateGraph
 from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from general.logs import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
-from tools import DEFINED_TOOLS_DICT,DEFINED_TOOLS
+from tools import DEFINED_TOOLS_DICT, DEFINED_TOOLS
 
 
 # Define agent components
 class AgentState(TypedDict):
     """State object for the agent."""
+
     messages: List[BaseMessage]
     memory: List[Dict[str, Any]]
     context: Optional[str]
 
 
-def should_continue_tools(state: AgentState, end_state: str = "answer_summary") -> Literal["tools", "answer_summary"]:
-    messages = state['messages']
-    last_message = messages[-1] # If the LLM makes a tool call, then we route to the "tools" node
+def should_continue_tools(
+    state: AgentState, end_state: str = "answer_summary"
+) -> Literal["tools", "answer_summary"]:
+    messages = state["messages"]
+    last_message = messages[
+        -1
+    ]  # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
-        return "tools" # Otherwise, we route to the "answer_summary" node
+        return "tools"  # Otherwise, we route to the "answer_summary" node
     return end_state
 
 
-def create_main_agent(llm, target_language="eng", summary_llm = None):
+def create_main_agent(llm, target_language="eng", summary_llm=None):
     """Create an agent with the specified model."""
 
     # Define the system prompt
@@ -38,14 +43,14 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
 
     summary_llm_prompt = summary_prompt(target_language)
 
-
     # Function to create messages for the agent
     def create_messages(state):
         messages = [SystemMessage(content=system_prompt)]
         if state.get("context"):
             context_message = HumanMessage(
                 content=f"Here is a file that might be relevant to the query:\n\n{state['context']}\n\n"
-                        f"Please use this information if relevant to answer the query.")
+                f"Please use this information if relevant to answer the query."
+            )
             messages.append(context_message)
 
         messages.extend(state["messages"])
@@ -55,9 +60,11 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
     # Function to call the language model
     def call_model(state):
         messages = create_messages(state)
-        config = {"recursion_limit": RECURSION_LIMIT,
-                    "agent_trace": AGENT_TRACE,
-                    "verbose": AGENT_VERBOSE}
+        config = {
+            "recursion_limit": RECURSION_LIMIT,
+            "agent_trace": AGENT_TRACE,
+            "verbose": AGENT_VERBOSE,
+        }
 
         conditional_logger_info(f"call_model: Calling model with messages: {messages}")
         response = llm.invoke(messages, config=config)
@@ -68,7 +75,7 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         messages = state["messages"]
         last_message = messages[-1]
 
-        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
             return state
 
         results = []
@@ -76,26 +83,26 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         for tool_call in last_message.tool_calls:
             # Extract tool information - handle both object and dict forms
             try:
-                if hasattr(tool_call, 'function'):
+                if hasattr(tool_call, "function"):
                     # OpenAI format
                     tool_name = tool_call.function.name
                     tool_args = tool_call.function.arguments
                     tool_id = tool_call.id
-                elif hasattr(tool_call, 'name'):
+                elif hasattr(tool_call, "name"):
                     # Direct attribute access
                     tool_name = tool_call.name
                     tool_args = tool_call.args
                     tool_id = tool_call.id
                 elif isinstance(tool_call, dict):
                     # Dictionary access
-                    if 'function' in tool_call:
-                        tool_name = tool_call['function']['name']
-                        tool_args = tool_call['function']['arguments']
-                        tool_id = tool_call['id']
+                    if "function" in tool_call:
+                        tool_name = tool_call["function"]["name"]
+                        tool_args = tool_call["function"]["arguments"]
+                        tool_id = tool_call["id"]
                     else:
-                        tool_name = tool_call.get('name')
-                        tool_args = tool_call.get('args')
-                        tool_id = tool_call.get('id')
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args")
+                        tool_id = tool_call.get("id")
                 else:
                     logger.error(f"Unknown tool_call format: {tool_call}")
                     continue
@@ -106,6 +113,7 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
             # Process tool arguments
             if isinstance(tool_args, str):
                 import json
+
                 try:
                     tool_args = json.loads(tool_args)
                 except json.JSONDecodeError:
@@ -117,7 +125,7 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
                 tool = DEFINED_TOOLS_DICT[tool_name]
                 try:
                     # Call the tool with the appropriate arguments
-                    if hasattr(tool, 'func'):
+                    if hasattr(tool, "func"):
                         # If the tool has a func attribute (like a structured tool)
                         if isinstance(tool_args, dict):
                             result = tool.func(**tool_args)
@@ -144,17 +152,14 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
             try:
                 # Try importing ToolMessage (newer LangChain versions)
                 from langchain_core.messages import ToolMessage
+
                 tool_response = ToolMessage(
-                    content=result_content,
-                    tool_call_id=tool_id
+                    content=result_content, tool_call_id=tool_id
                 )
             except (ImportError, AttributeError):
                 # Fall back to AIMessage format
                 tool_response = AIMessage(
-                    content=result_content,
-                    additional_kwargs={
-                        "tool_call_id": tool_id
-                    }
+                    content=result_content, additional_kwargs={"tool_call_id": tool_id}
                 )
 
             results.append(tool_response)
@@ -169,20 +174,23 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
                 # Extract the content from the AI message
                 response_content = message.content
                 # conditional_debug_info(f"\n generate_summary: Response content: {response_content}\n")
-                conditional_logger_info(f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n")
+                conditional_logger_info(
+                    f"Summary prompt: {summary_llm_prompt.format(response=response_content)}\n"
+                )
 
                 # Generate a structured summary
                 summary_message = summary_llm.invoke(
                     summary_llm_prompt.format(response=response_content)
                 )
-                conditional_logger_info(f"generate_summary: Summary message: {summary_message}\n")
+                conditional_logger_info(
+                    f"generate_summary: Summary message: {summary_message}\n"
+                )
 
                 # Update the state with the summary
                 return {"messages": state["messages"] + [summary_message]}
 
         # If no AI message found
         return {"summary": f"No response to summarize. (in {target_language})"}
-
 
     # Build the graph
     workflow = lg.StateGraph(AgentState)
@@ -199,7 +207,7 @@ def create_main_agent(llm, target_language="eng", summary_llm = None):
         should_continue_tools,
     )
 
-    workflow.add_edge("tools", 'agent')
+    workflow.add_edge("tools", "agent")
     workflow.add_edge("answer_summary", END)
 
     # Compile the graph
@@ -222,18 +230,26 @@ class AgentLLM:
 
         if api_key:
             os.environ["OPENAI_API_KEY"] = api_key
-            self._llm = ChatOpenAI(model=model_name, temperature=0.0) if model_name != "o3-mini" else ChatOpenAI(
-                model=model_name)
+            self._llm = (
+                ChatOpenAI(model=model_name, temperature=0.0)
+                if model_name != "o3-mini"
+                else ChatOpenAI(model=model_name)
+            )
 
             self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOLS)
-            #TODO: Check if work correctly with other chats after implementing them
+            # TODO: Check if work correctly with other chats after implementing them
             # TODO: node with tools should be inside main agent?
-            self._agent_executor = create_main_agent(llm=self._llm_with_tools, target_language=target_language, summary_llm=self._llm)
+            self._agent_executor = create_main_agent(
+                llm=self._llm_with_tools,
+                target_language=target_language,
+                summary_llm=self._llm,
+            )
             self._model_name = model_name
-            logger.info(f"Main Agent created with model: {model_name}, language: {target_language}")
+            logger.info(
+                f"Main Agent created with model: {model_name}, language: {target_language}"
+            )
             return True
         return False
-
 
     def run_agent_on_text(self, text, memory, return_thinking=False):
         """Run the agent on the provided text."""
@@ -246,20 +262,25 @@ class AgentLLM:
         initial_state = AgentState(
             messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
             memory=memory or [],
-            context=self._prepare_context_message(self._context[0], self._context[1]) if self._context else None
+            context=(
+                self._prepare_context_message(self._context[0], self._context[1])
+                if self._context
+                else None
+            ),
         )
         thinking_process_message = ""
-        config = {"recursion_limit": RECURSION_LIMIT,
-                    "agent_trace": AGENT_TRACE,
-                    "verbose": AGENT_VERBOSE}
+        config = {
+            "recursion_limit": RECURSION_LIMIT,
+            "agent_trace": AGENT_TRACE,
+            "verbose": AGENT_VERBOSE,
+        }
 
         try:
-            result = self._agent_executor.invoke(initial_state,config=config)
+            result = self._agent_executor.invoke(initial_state, config=config)
             # Extract the last AI message
             if return_thinking:
-               # TODO
+                # TODO
                 thinking_process_message = "Not implemented yet"
-
 
             for message in reversed(result["messages"]):
                 # conditional_debug_info(f"Message: {message}")
@@ -287,14 +308,16 @@ class AgentLLM:
         """Prepare the context message for the agent."""
         context_messages = {
             "file info": f"Here is a file that might be relevant to the query:\n\n{context}\n\n"
-                         f"Please check if this file contains information relevant to the query before exploring other sources.",
+            f"Please check if this file contains information relevant to the query before exploring other sources.",
             "file content": f"Here is the content of the file:\n\n{context}\n\n"
-                            f"Please check if this information is relevant to the query before exploring other sources.",
+            f"Please check if this information is relevant to the query before exploring other sources.",
             "general": f"Here is some additional information that might be relevant to the query:\n\n{context}\n\n"
-                       f"Please use this information if relevant to answer the query."
+            f"Please use this information if relevant to answer the query.",
         }
         if context_type not in context_messages:
-            logger.warning(f"Unknown context type: {context_type}. Defaulting to 'general'.")
+            logger.warning(
+                f"Unknown context type: {context_type}. Defaulting to 'general'."
+            )
 
         # Return the appropriate message or the raw context if context_type is not in the dictionary
         return context_messages.get(context_type, context)

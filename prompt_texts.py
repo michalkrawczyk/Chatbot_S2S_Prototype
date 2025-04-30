@@ -1,14 +1,16 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-from openai_client import SUPPORT_LANGUAGES_CAST_DICT
 from general.logs import logger
+from openai_client import SUPPORT_LANGUAGES_CAST_DICT
 from tools import DEFINED_TOOLS
 
 
 def summary_prompt(language=None):
     target_language = SUPPORT_LANGUAGES_CAST_DICT.get(language, None)
     if not target_language:
-        logger.warning(f"Language '{language}' not supported for summary prompts. Defaulting to English.")
+        logger.warning(
+            f"Language '{language}' not supported for summary prompts. Defaulting to English."
+        )
         target_language = "English"
 
     system_text = f"""System: You are a helpful AI assistant that creates structured, concise summaries.
@@ -32,11 +34,12 @@ def summary_prompt(language=None):
     
     Translate your entire response into {target_language} while maintaining the structure."""
 
-    summarize_prompt = ChatPromptTemplate.from_messages([
-        ("system", system_text),
-        ("human", "Response to summarize: {response}")])
+    summarize_prompt = ChatPromptTemplate.from_messages(
+        [("system", system_text), ("human", "Response to summarize: {response}")]
+    )
 
     return summarize_prompt
+
 
 def main_system_prompt():
     system_prompt = """You are an analytical assistant specialized in extracting key insights from transcribed text.
@@ -68,5 +71,3 @@ Available tools:
         system_prompt += f"\n- {tool.name}: {tool.description}"
 
     return system_prompt
-
-

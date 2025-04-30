@@ -1,10 +1,12 @@
 import os
+import tempfile
 import time
 from pathlib import Path
-import tempfile
 
 from openai import OpenAI
+
 from general.logs import logger
+
 
 SUPPORT_LANGUAGES_CAST_DICT = {
     "auto": "English",
@@ -21,10 +23,11 @@ SUPPORT_LANGUAGES_CAST_DICT = {
     "ar": "Arabic",
     "hi": "Hindi",
     "ko": "Korean",
-    "pl": "Polish"
+    "pl": "Polish",
 }
 
 SUPPORT_LANGUAGES = list(SUPPORT_LANGUAGES_CAST_DICT.keys())
+
 
 class OpenAIClient:
     """Handles OpenAI API interactions"""
@@ -106,14 +109,16 @@ class OpenAIClient:
                     params["language"] = language
 
                 logger.info(
-                    f"Transcribing file: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
+                    f"Transcribing file: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}"
+                )
                 with open(audio_path, "rb") as audio_file:
                     response = self.client.audio.transcriptions.create(
-                        file=audio_file,
-                        **params
+                        file=audio_file, **params
                     )
 
-                logger.info(f"Transcription successful: {len(response.text)} characters")
+                logger.info(
+                    f"Transcription successful: {len(response.text)} characters"
+                )
                 return response.text
             except Exception as e:
                 retries += 1
@@ -121,7 +126,9 @@ class OpenAIClient:
                 logger.warning(f"Transcription attempt {retries} failed: {error_msg}")
 
                 if retries >= max_retries:
-                    logger.error(f"Transcription failed after {max_retries} attempts: {error_msg}")
+                    logger.error(
+                        f"Transcription failed after {max_retries} attempts: {error_msg}"
+                    )
                     return f"Transcription error: {error_msg}"
 
                 # Wait before retrying with exponential backoff
@@ -165,15 +172,13 @@ class OpenAIClient:
                     instructions="Speak with soft, calm voice and a conversational manner.",
                     voice=voice,
                     input=text,
-                    response_format="wav"
+                    response_format="wav",
                 )
                 return response
             else:
                 # Non-streaming approach for saving to file
                 response = self.client.audio.speech.create(
-                    model="tts-1",
-                    voice=voice,
-                    input=text
+                    model="tts-1", voice=voice, input=text
                 )
 
                 # Save to file
