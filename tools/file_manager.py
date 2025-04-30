@@ -1,19 +1,21 @@
+import json
 import os
 from pathlib import Path
 from typing import List, Optional
-from pydantic import BaseModel
-import json
-import pandas as pd
-from langchain_core.language_models.chat_models import BaseChatModel
 
-from general.config import FILE_MEMORY_DIR, DATA_FILES_DIR, SUPPORTED_FILETYPES
-from tools.tool_prompts_texts import file_summary_prompt
-from tools.datasheet_manager import DATASHEET_MANAGER
+from langchain_core.language_models.chat_models import BaseChatModel
+import pandas as pd
+from pydantic import BaseModel
+
+from general.config import DATA_FILES_DIR, FILE_MEMORY_DIR, SUPPORTED_FILETYPES
 from general.logs import conditional_logger_info
+from tools.datasheet_manager import DATASHEET_MANAGER
+from tools.tool_prompts_texts import file_summary_prompt
 
 
 class FileInfo(BaseModel):
     """Model for file information stored in the index."""
+
     path: str
     description: str = ""
     origin: Optional[str] = None
@@ -22,9 +24,14 @@ class FileInfo(BaseModel):
 
 class FileSystemManager:
     """Class to manage file system operations."""
+
     _file_index = {}
 
-    def __init__(self, memory_dir: str = FILE_MEMORY_DIR, memory_index_filename: str = "index.json"):
+    def __init__(
+        self,
+        memory_dir: str = FILE_MEMORY_DIR,
+        memory_index_filename: str = "index.json",
+    ):
         self.memory_dir = memory_dir
         self.memory_index_path = os.path.join(DATA_FILES_DIR, memory_index_filename)
 
@@ -38,23 +45,32 @@ class FileSystemManager:
     def _initialize_index(self):
         """Initialize or load the file index."""
         if os.path.exists(self.memory_index_path):
-            with open(self.memory_index_path, 'r') as f:
+            with open(self.memory_index_path, "r") as f:
                 self._file_index = json.load(f)
         else:
             self._save_index()
 
     def _save_index(self):
         """Save the current file index to disk."""
-        with open(self.memory_index_path, 'w') as f:
+        with open(self.memory_index_path, "w") as f:
             json.dump(self._file_index, f, indent=2)
 
     def list_files(self) -> List[str]:
         """List all files in the memory directory."""
         files = os.listdir(self.memory_dir)
-        conditional_logger_info(f"Files in memory directory ({self.memory_dir}): {files}")
-        return [os.path.join(self.memory_dir, f) for f in files if os.path.isfile(os.path.join(self.memory_dir, f)) and f.endswith(SUPPORTED_FILETYPES)]
+        conditional_logger_info(
+            f"Files in memory directory ({self.memory_dir}): {files}"
+        )
+        return [
+            os.path.join(self.memory_dir, f)
+            for f in files
+            if os.path.isfile(os.path.join(self.memory_dir, f))
+            and f.endswith(SUPPORTED_FILETYPES)
+        ]
 
-    def update_file_info(self, llm_summarizer: Optional[BaseChatModel] = None) -> "FileSystemManager":
+    def update_file_info(
+        self, llm_summarizer: Optional[BaseChatModel] = None
+    ) -> "FileSystemManager":
         """Update file information using LLM for new or modified files.
 
         Args:
@@ -76,13 +92,14 @@ class FileSystemManager:
                 if content:
                     # Determine file type from extension
                     file_ext = os.path.splitext(file_path)[1].lower()
-                    file_type = file_ext.lstrip('.') if file_ext else "text"
+                    file_type = file_ext.lstrip(".") if file_ext else "text"
 
                     # Create the summary prompt
                     summary_prompt = file_summary_prompt(file_type, content)
 
                     # Generate summary using the LLM
                     from langchain.schema import HumanMessage
+
                     messages = [HumanMessage(content=summary_prompt)]
                     response = llm_summarizer.invoke(messages)
                     description = response.content
@@ -90,21 +107,25 @@ class FileSystemManager:
                     self._file_index[rel_path] = {
                         "path": file_path,
                         "description": description,
-                        "origin": "undefined", #TODO
-                        "last_updated": self._get_timestamp()
+                        "origin": "undefined",  # TODO
+                        "last_updated": self._get_timestamp(),
                     }
                 else:
                     # If content is empty, just add a placeholder
                     self._file_index[rel_path] = {
                         "path": file_path,
                         "description": "No description available",
-                        "origin": "undefined", #TODO
-                        "last_updated": self._get_timestamp()
+                        "origin": "undefined",  # TODO
+                        "last_updated": self._get_timestamp(),
                     }
 
         # Remove entries for files that no longer exist
-        existing_rel_paths = [os.path.relpath(p, self.memory_dir) for p in current_files]
-        keys_to_remove = [k for k in self._file_index.keys() if k not in existing_rel_paths]
+        existing_rel_paths = [
+            os.path.relpath(p, self.memory_dir) for p in current_files
+        ]
+        keys_to_remove = [
+            k for k in self._file_index.keys() if k not in existing_rel_paths
+        ]
 
         for key in keys_to_remove:
             del self._file_index[key]
@@ -112,7 +133,9 @@ class FileSystemManager:
         self._save_index()
         return self
 
-    def get_detailed_file_list(self, update_missing=False, llm_summarizer: Optional[BaseChatModel] = None):
+    def get_detailed_file_list(
+        self, update_missing=False, llm_summarizer: Optional[BaseChatModel] = None
+    ):
         """Get a list of files with their descriptions.
 
         Args:
@@ -124,7 +147,9 @@ class FileSystemManager:
         """
         # TODO: reimplement?
         if update_missing and not llm_summarizer:
-            raise ValueError("LLM summarizer must be provided when update_missing is True")
+            raise ValueError(
+                "LLM summarizer must be provided when update_missing is True"
+            )
 
         current_files = self.list_files()
         result = []
@@ -146,7 +171,7 @@ class FileSystemManager:
                         path=file_path,
                         description=description,
                         origin="system_scan",
-                        last_updated=self._get_timestamp()
+                        last_updated=self._get_timestamp(),
                     )
 
                     # Update the index
@@ -157,15 +182,19 @@ class FileSystemManager:
             else:
                 # File not in index, but we don't want to update
                 file_info = FileInfo(
-                    path=file_path,
-                    description="No description available"
+                    path=file_path, description="No description available"
                 )
                 result.append(file_info)
 
         return result
 
-    def add_predefined_file_info(self, filename: str, description: str, origin: str = "user_defined",
-                                 update_existing: bool = False):
+    def add_predefined_file_info(
+        self,
+        filename: str,
+        description: str,
+        origin: str = "user_defined",
+        update_existing: bool = False,
+    ):
         """Add or update predefined file information.
 
         Args:
@@ -200,7 +229,7 @@ class FileSystemManager:
                 "path": file_path,
                 "description": description,
                 "origin": origin,
-                "last_updated": self._get_timestamp()
+                "last_updated": self._get_timestamp(),
             }
 
         self._save_index()
@@ -215,54 +244,67 @@ class FileSystemManager:
         Returns:
             String representation of the file content
         """
-        corrected_file_path = os.path.join(self.memory_dir, file_path) if not self.memory_dir in file_path else file_path
+        corrected_file_path = (
+            os.path.join(self.memory_dir, file_path)
+            if not self.memory_dir in file_path
+            else file_path
+        )
 
         if not os.path.exists(corrected_file_path):
             raise FileNotFoundError(f"File {corrected_file_path} does not exist")
 
         file_ext = os.path.splitext(corrected_file_path)[1].lower()
 
-
         try:
             if file_ext not in SUPPORTED_FILETYPES:
-                raise ValueError(f"Unsupported file format: {file_ext}. Supported formats: {SUPPORTED_FILETYPES}")
+                raise ValueError(
+                    f"Unsupported file format: {file_ext}. Supported formats: {SUPPORTED_FILETYPES}"
+                )
             # Text files
-            if file_ext in ['.txt', '.md']:
-                with open(corrected_file_path, 'r', encoding='utf-8') as f:
+            if file_ext in [".txt", ".md"]:
+                with open(corrected_file_path, "r", encoding="utf-8") as f:
                     return f.read()
 
             # CSV files
-            elif file_ext == '.csv':
+            elif file_ext == ".csv":
                 DATASHEET_MANAGER.load_csv(corrected_file_path)
-                return DATASHEET_MANAGER.df_as_str() # TODO: or should only give description?
+                return (
+                    DATASHEET_MANAGER.df_as_str()
+                )  # TODO: or should only give description?
 
             # Excel files
-            elif file_ext in ['.xlsx', '.xls']:
+            elif file_ext in [".xlsx", ".xls"]:
                 DATASHEET_MANAGER.load_excel(corrected_file_path)
-                return DATASHEET_MANAGER.df_as_str() # TODO: or should only give description?
+                return (
+                    DATASHEET_MANAGER.df_as_str()
+                )  # TODO: or should only give description?
 
             # Word documents
-            elif file_ext in ['.docx', '.doc']:
-                raise NotImplementedError("Reading Word documents is not implemented yet.")
+            elif file_ext in [".docx", ".doc"]:
+                raise NotImplementedError(
+                    "Reading Word documents is not implemented yet."
+                )
                 # doc = docx.Document(file_path)
                 # return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
 
-            elif file_ext in ['.jpg', '.jpeg', '.png']:
+            elif file_ext in [".jpg", ".jpeg", ".png"]:
                 raise NotImplementedError("Reading images is not implemented yet.")
 
             # Default fallback - try to read as text
             else:
                 try:
-                    with open(corrected_file_path, 'r', encoding='utf-8') as f:
+                    with open(corrected_file_path, "r", encoding="utf-8") as f:
                         return f.read()
                 except UnicodeDecodeError:
                     return f"[Binary file: {os.path.basename(corrected_file_path)}]"
 
         except Exception as e:
-            return f"Error reading file {os.path.basename(corrected_file_path)}: {str(e)}"
-
+            return (
+                f"Error reading file {os.path.basename(corrected_file_path)}: {str(e)}"
+            )
 
     def _get_timestamp(self):
         """Get the current timestamp in ISO format."""
         from datetime import datetime
+
         return datetime.now().isoformat()

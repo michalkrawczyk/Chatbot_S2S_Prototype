@@ -1,40 +1,44 @@
 from typing import Union, Optional, List, Dict, Any
 from langchain.tools import Tool
 from langchain_core.tools import tool
-# from langchain.tools import BaseTool
-# from langgraph.prebuilt import ToolNode
 
-#
-# # Import the tools from your other file
-# from tools.datasheet_manager import DataFrameTool, GoogleSheetInput, DescribeDataInput, FilterDataInput, AggregateDataInput, describe_data, filter_data, aggregate_data
 from tools.file_manager import FileSystemManager
-from tools.datasheet_manager import DATASHEET_MANAGER, DatasheetLoadParams, DatasheetChunkParams, DatasheetStatsReqParams
+from tools.datasheet_manager import (
+    DATASHEET_MANAGER,
+    DatasheetLoadParams,
+    DatasheetChunkParams,
+    DatasheetStatsReqParams,
+)
 from tools.google_api_manager import GOOGLE_API_CLIENT, GoogleFileInput
 
 import traceback
 import logging
-logger = logging.getLogger('Tool Register')
+
+logger = logging.getLogger("Tool Register")
 
 
 #
 # Create the filesystem tool instance
 FILESYSTEM_MANAGER = FileSystemManager()
 
+
 def _read_datasheet(file_path: str, sheet_name: Optional[Union[str, int]] = None):
     """
     Load a datasheet file and return its content as a string.
     """
-    if file_path.endswith(('.csv', '.CSV')):
+    if file_path.endswith((".csv", ".CSV")):
         DATASHEET_MANAGER.load_csv(file_path)
-    elif file_path.endswith(('.xlsx', '.xls', '.XLSX', '.XLS')):
+    elif file_path.endswith((".xlsx", ".xls", ".XLSX", ".XLS")):
         DATASHEET_MANAGER.load_excel(file_path, sheet_name=sheet_name)
     else:
-        raise ValueError(f"Unsupported file format for {file_path}. Use CSV or Excel files.")
-
+        raise ValueError(
+            f"Unsupported file format for {file_path}. Use CSV or Excel files."
+        )
 
 
 ## Tool definitions
 ### File System Tools
+
 
 @tool
 def get_file_list() -> str:
@@ -43,14 +47,19 @@ def get_file_list() -> str:
     """
     return FILESYSTEM_MANAGER.list_files()
 
+
 @tool
 def get_file_content(file_name: str) -> str:
     """
     Load a file from the memory_files directory.
     """
-    return FILESYSTEM_MANAGER.read_file(file_name) #TODO: switch later for detailed view
+    return FILESYSTEM_MANAGER.read_file(
+        file_name
+    )  # TODO: switch later for detailed view
+
 
 ### Datasheet Tools
+
 
 @tool
 def get_full_dataframe_string_tool(params: Union[DatasheetLoadParams, Dict]) -> str:
@@ -69,9 +78,12 @@ def get_full_dataframe_string_tool(params: Union[DatasheetLoadParams, Dict]) -> 
     try:
         return DATASHEET_MANAGER.df_as_str()
     except Exception as e:
-        logger.error(f"[get_full_dataframe_string_tool] Error converting dataframe to string: {e}")
+        logger.error(
+            f"[get_full_dataframe_string_tool] Error converting dataframe to string: {e}"
+        )
         logger.error(traceback.format_exc())
         return f"Error converting dataframe to string: {e}"
+
 
 @tool
 def get_datasheet_chunk(params: Union[DatasheetChunkParams, Dict]) -> str:
@@ -101,7 +113,9 @@ def get_datasheet_chunk(params: Union[DatasheetChunkParams, Dict]) -> str:
 
 
 @tool
-def calculate_datasheet_statistics(params: Union[DatasheetStatsReqParams, Dict]) -> Dict[str, Any]:
+def calculate_datasheet_statistics(
+    params: Union[DatasheetStatsReqParams, Dict],
+) -> Dict[str, Any]:
     """
     Calculate statistical measures for specified columns in the datasheet.
 
@@ -119,14 +133,16 @@ def calculate_datasheet_statistics(params: Union[DatasheetStatsReqParams, Dict])
             _read_datasheet(params.file_path, params.sheet_name)
 
         return DATASHEET_MANAGER.calculate_statistics(
-            columns=params.columns,
-            rows=params.rows,
-            stats=params.stats
+            columns=params.columns, rows=params.rows, stats=params.stats
         )
     except Exception as e:
-        logger.error(f"[calculate_datasheet_statistics] Error calculating statistics: {e}")
+        logger.error(
+            f"[calculate_datasheet_statistics] Error calculating statistics: {e}"
+        )
         logger.error(traceback.format_exc())
         return {"error": str(e)}
+
+
 ### Google API
 @tool
 def download_google_file(params: GoogleFileInput) -> str:
@@ -154,21 +170,22 @@ def download_google_file(params: GoogleFileInput) -> str:
             params = GoogleFileInput(**params)
 
         # Determine if the URL is for a Google Sheet
-        is_sheet = "spreadsheets" in params.file_url or "sheets.google.com" in params.file_url
+        is_sheet = (
+            "spreadsheets" in params.file_url or "sheets.google.com" in params.file_url
+        )
 
         if is_sheet:
             # Export Google Sheet as CSV
             filepath = GOOGLE_API_CLIENT.save_sheet_to_csv(
                 spreadsheet_id_or_url=params.file_url,
                 output_file=params.output_filename,
-                sheet_range=params.sheet_range
+                sheet_range=params.sheet_range,
             )
             file_type = "Google Sheet as CSV"
         else:
             # Download regular Google Drive file
             filepath = GOOGLE_API_CLIENT.download_file(
-                file_id_or_url=params.file_url,
-                output_file=params.output_filename
+                file_id_or_url=params.file_url, output_file=params.output_filename
             )
             file_type = "Google Drive file"
 
@@ -176,6 +193,7 @@ def download_google_file(params: GoogleFileInput) -> str:
 
     except Exception as e:
         return f"Error downloading file: {str(e)}"
+
 
 # @tool
 # def generate_datasheet_description(request: DataDescriptionRequest) -> str:

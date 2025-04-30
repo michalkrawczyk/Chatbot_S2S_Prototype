@@ -7,5 +7,5 @@ __all__ = [
     "DEFINED_TOOLS",
     "get_file_content",
     "GOOGLE_API_CLIENT",
-    "GoogleFileInput"
+    "GoogleFileInput",
 ]

@@ -1,22 +1,25 @@
-import os
-import json
-import io
 import csv
+import io
+import json
+import os
 import re
+from typing import Optional
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from pydantic import BaseModel, Field
-from typing import Optional
 
-from general.logs import logger
 from general.config import FILE_MEMORY_DIR
+from general.logs import logger
 
 
 class GoogleClient:
     """Client for interacting with Google Sheets and Google Drive."""
 
-    def __init__(self, env_var_name="GOOGLE_SERVICE_KEY_JSON", memory_dir: str = FILE_MEMORY_DIR):
+    def __init__(
+        self, env_var_name="GOOGLE_SERVICE_KEY_JSON", memory_dir: str = FILE_MEMORY_DIR
+    ):
         """
         Initialize with the environment variable containing the service key JSON.
 
@@ -44,13 +47,15 @@ class GoogleClient:
         # Get credentials
         self.credentials = service_account.Credentials.from_service_account_info(
             self.service_key_dict,
-            scopes=['https://www.googleapis.com/auth/spreadsheets',
-                    'https://www.googleapis.com/auth/drive']
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
         )
 
         # Initialize services
-        self.drive_service = build('drive', 'v3', credentials=self.credentials)
-        self.sheets_service = build('sheets', 'v4', credentials=self.credentials)
+        self.drive_service = build("drive", "v3", credentials=self.credentials)
+        self.sheets_service = build("sheets", "v4", credentials=self.credentials)
 
     def get_sheet_names(self, spreadsheet_id_or_url):
         """
@@ -65,13 +70,15 @@ class GoogleClient:
         spreadsheet_id = self.extract_file_id(spreadsheet_id_or_url)
 
         # Get spreadsheet metadata including sheets
-        spreadsheet = self.sheets_service.spreadsheets().get(
-            spreadsheetId=spreadsheet_id
-        ).execute()
+        spreadsheet = (
+            self.sheets_service.spreadsheets()
+            .get(spreadsheetId=spreadsheet_id)
+            .execute()
+        )
 
         # Extract sheet names
-        sheets = spreadsheet.get('sheets', [])
-        sheet_names = [sheet.get('properties', {}).get('title', '') for sheet in sheets]
+        sheets = spreadsheet.get("sheets", [])
+        sheet_names = [sheet.get("properties", {}).get("title", "") for sheet in sheets]
 
         return sheet_names
 
@@ -90,10 +97,10 @@ class GoogleClient:
         """
         # Patterns for different Google URL formats
         patterns = [
-            r'/d/([a-zA-Z0-9-_]+)',  # Drive: /d/{fileId}
-            r'/file/d/([a-zA-Z0-9-_]+)',  # Drive: /file/d/{fileId}
-            r'id=([a-zA-Z0-9-_]+)',  # Drive: ?id={fileId}
-            r'/spreadsheets/d/([a-zA-Z0-9-_]+)',  # Sheets: /spreadsheets/d/{fileId}
+            r"/d/([a-zA-Z0-9-_]+)",  # Drive: /d/{fileId}
+            r"/file/d/([a-zA-Z0-9-_]+)",  # Drive: /file/d/{fileId}
+            r"id=([a-zA-Z0-9-_]+)",  # Drive: ?id={fileId}
+            r"/spreadsheets/d/([a-zA-Z0-9-_]+)",  # Sheets: /spreadsheets/d/{fileId}
         ]
 
         for pattern in patterns:
@@ -102,7 +109,7 @@ class GoogleClient:
                 return match.group(1)
 
         # If URL is just the ID itself
-        if re.match(r'^[a-zA-Z0-9-_]{25,}$', url):
+        if re.match(r"^[a-zA-Z0-9-_]{25,}$", url):
             return url
 
         raise ValueError(f"Could not extract file ID from URL: {url}")
@@ -118,7 +125,11 @@ class GoogleClient:
             dict: The file metadata.
         """
         file_id = self.extract_file_id(file_id_or_url)
-        return self.drive_service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        return (
+            self.drive_service.files()
+            .get(fileId=file_id, fields="name,mimeType")
+            .execute()
+        )
 
     def _get_unique_filepath(self, filepath):
         """
@@ -186,23 +197,30 @@ class GoogleClient:
             sheet_names = self.get_sheet_names(spreadsheet_id)
             result = {}
             for sheet_name in sheet_names:
-                sheet_data = self.sheets_service.spreadsheets().values().get(
-                    spreadsheetId=spreadsheet_id,
-                    range=sheet_name
-                ).execute()
-                result[sheet_name] = sheet_data.get('values', [])
+                sheet_data = (
+                    self.sheets_service.spreadsheets()
+                    .values()
+                    .get(spreadsheetId=spreadsheet_id, range=sheet_name)
+                    .execute()
+                )
+                result[sheet_name] = sheet_data.get("values", [])
             return result
         else:
             # Original behavior for specific sheet range
-            result = self.sheets_service.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range=sheet_range
-            ).execute()
-            return result.get('values', [])
+            result = (
+                self.sheets_service.spreadsheets()
+                .values()
+                .get(spreadsheetId=spreadsheet_id, range=sheet_range)
+                .execute()
+            )
+            return result.get("values", [])
 
-    def save_sheet_to_csv(self, spreadsheet_id_or_url,
-                          output_file:Optional[str] = None,
-                          sheet_range:Optional[str] = None):
+    def save_sheet_to_csv(
+        self,
+        spreadsheet_id_or_url,
+        output_file: Optional[str] = None,
+        sheet_range: Optional[str] = None,
+    ):
         """
         Save a spreadsheet to a CSV file.
 
@@ -219,7 +237,7 @@ class GoogleClient:
         # Get original filename if output_file is None
         if output_file is None:
             metadata = self.get_file_metadata(spreadsheet_id)
-            base_filename = metadata['name']
+            base_filename = metadata["name"]
         else:
             base_filename = os.path.splitext(os.path.basename(output_file))[0]
 
@@ -238,13 +256,17 @@ class GoogleClient:
                 # Check if the directory exists
                 directory = os.path.dirname(full_path)
                 if not os.path.isdir(directory):
-                    logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
-                    full_path = os.path.join(self.memory_dir, os.path.basename(sheet_filename))
+                    logger.warning(
+                        f"Directory {directory} does not exist. Saving file at {self.memory_dir}"
+                    )
+                    full_path = os.path.join(
+                        self.memory_dir, os.path.basename(sheet_filename)
+                    )
 
                 # Ensure the file path is unique
                 full_path = self._get_unique_filepath(full_path)
 
-                with open(full_path, 'w', newline='', encoding='utf-8') as f:
+                with open(full_path, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerows(values)
 
@@ -259,7 +281,7 @@ class GoogleClient:
             # Append .csv if not already in the filename
             if output_file is None:
                 output_file = f"{base_filename}.csv"
-            elif not output_file.lower().endswith('.csv'):
+            elif not output_file.lower().endswith(".csv"):
                 output_file = f"{output_file}.csv"
 
             full_path = self._get_full_path(output_file)
@@ -267,13 +289,15 @@ class GoogleClient:
             # Check if the directory exists
             directory = os.path.dirname(full_path)
             if not os.path.isdir(directory):
-                logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
+                logger.warning(
+                    f"Directory {directory} does not exist. Saving file at {self.memory_dir}"
+                )
                 full_path = os.path.join(self.memory_dir, os.path.basename(output_file))
 
             # Ensure the file path is unique
             full_path = self._get_unique_filepath(full_path)
 
-            with open(full_path, 'w', newline='', encoding='utf-8') as f:
+            with open(full_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerows(values)
 
@@ -293,12 +317,16 @@ class GoogleClient:
         Returns:
             list: List of file metadata.
         """
-        results = self.drive_service.files().list(
-            pageSize=max_results,
-            fields="nextPageToken, files(id, name, mimeType)",
-            q=query
-        ).execute()
-        return results.get('files', [])
+        results = (
+            self.drive_service.files()
+            .list(
+                pageSize=max_results,
+                fields="nextPageToken, files(id, name, mimeType)",
+                q=query,
+            )
+            .execute()
+        )
+        return results.get("files", [])
 
     def download_file(self, file_id_or_url, output_file=None):
         """
@@ -316,7 +344,7 @@ class GoogleClient:
         # Get original filename if output_file is None
         if output_file is None:
             metadata = self.get_file_metadata(file_id)
-            output_file = metadata['name']
+            output_file = metadata["name"]
 
         request = self.drive_service.files().get_media(fileId=file_id)
 
@@ -326,13 +354,15 @@ class GoogleClient:
         # Check if the directory exists
         directory = os.path.dirname(full_path)
         if not os.path.isdir(directory):
-            logger.warning(f"Directory {directory} does not exist. Saving file at {self.memory_dir}")
+            logger.warning(
+                f"Directory {directory} does not exist. Saving file at {self.memory_dir}"
+            )
             full_path = os.path.join(self.memory_dir, os.path.basename(output_file))
 
         # Ensure the file path is unique
         full_path = self._get_unique_filepath(full_path)
 
-        with open(full_path, 'wb') as f:
+        with open(full_path, "wb") as f:
             downloader = MediaIoBaseDownload(f, request)
             done = False
             while not done:
@@ -366,15 +396,18 @@ class GoogleClient:
 
         # Use original filename if output_file is None
         if output_file is None:
-            output_file = files[0]['name']
+            output_file = files[0]["name"]
 
-        return self.download_file(files[0]['id'], output_file)
+        return self.download_file(files[0]["id"], output_file)
 
     def simplified_download(self, file_id_or_url):
-        #TODO: docs
+        # TODO: docs
         downloaded_files = []
         try:
-            is_sheet = "spreadsheets" in file_id_or_url or "sheets.google.com" in file_id_or_url
+            is_sheet = (
+                "spreadsheets" in file_id_or_url
+                or "sheets.google.com" in file_id_or_url
+            )
 
             if is_sheet:
                 # Export Google Sheet as CSV
@@ -393,10 +426,11 @@ class GoogleClient:
         except Exception as e:
             logger.error(f"Error downloading file: {str(e)}")
 
-        return downloaded_files if isinstance(downloaded_files, list) else [downloaded_files]
-
-
-
+        return (
+            downloaded_files
+            if isinstance(downloaded_files, list)
+            else [downloaded_files]
+        )
 
 
 class GoogleFileInput(BaseModel):
@@ -404,18 +438,19 @@ class GoogleFileInput(BaseModel):
 
     file_url: str = Field(
         ...,
-        description="URL or file ID of the Google Drive file or Google Sheet to download"
+        description="URL or file ID of the Google Drive file or Google Sheet to download",
     )
 
     output_filename: Optional[str] = Field(
         None,
-        description="Name for the downloaded file. If None, uses the original filename"
+        description="Name for the downloaded file. If None, uses the original filename",
     )
 
     sheet_range: Optional[str] = Field(
         None,
-        description="For Google Sheets only: range of cells to export (e.g., 'Sheet1!A1:D10'). If None, all sheets will be retrieved"
+        description="For Google Sheets only: range of cells to export (e.g., 'Sheet1!A1:D10'). If None, all sheets will be retrieved",
     )
+
 
 ### Singleton instance
 GOOGLE_API_CLIENT = GoogleClient()

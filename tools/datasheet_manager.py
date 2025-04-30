@@ -1,7 +1,10 @@
-import pandas as pd
-import numpy as np
-from langchain_core.language_models.chat_models import BaseChatModel
+# Standard library imports
 from typing import Union, Optional, List, Dict, Any, Tuple, Iterable
+
+# Third-party library imports
+from langchain_core.language_models.chat_models import BaseChatModel
+import numpy as np
+import pandas as pd
 from pydantic import BaseModel, Field
 
 ### Main class
@@ -10,6 +13,7 @@ class DatasheetManager:
     A class to manage and interact with datasheet files (CSV, Excel) with various operations
     including data extraction, description, and statistical analysis.
     """
+
     _df: Optional[pd.DataFrame] = None
     _df_filepath = None
 
@@ -23,7 +27,9 @@ class DatasheetManager:
         """
         self._df = pd.read_csv(file_path, **kwargs)
         self._df_filepath = file_path
-        print(f"Loaded CSV file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
+        print(
+            f"Loaded CSV file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns"
+        )
 
     def load_excel(self, file_path: str, sheet_name=0, **kwargs) -> None:
         """
@@ -36,7 +42,9 @@ class DatasheetManager:
         """
         self._df = pd.read_excel(file_path, sheet_name=sheet_name, **kwargs)
         self._df_filepath = file_path
-        print(f"Loaded Excel file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns")
+        print(
+            f"Loaded Excel file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns"
+        )
 
     def load_google_sheet(self, sheet_url: str) -> None:
         """
@@ -50,8 +58,6 @@ class DatasheetManager:
         # Implementation to be added later
         self._df_filepath = sheet_url
         raise NotImplementedError("Google Sheet loading is not implemented yet.")
-
-
 
     ## Note: probably not needed
     # def save_to_csv(self, file_path: str, **kwargs) -> None:
@@ -98,14 +104,16 @@ class DatasheetManager:
             "column_names": list(self._df.columns),
             "dtypes": {col: str(dtype) for col, dtype in self._df.dtypes.items()},
             "memory_usage": self._df.memory_usage(deep=True).sum(),
-            "missing_values": self._df.isna().sum().to_dict()
+            "missing_values": self._df.isna().sum().to_dict(),
         }
 
         return description
 
-    def get_chunk(self,
-                  rows: Optional[Union[List[int], List[str], slice, int, str]] = None,
-                  columns: Optional[Union[List[int], List[str], slice, int, str]] = None) -> pd.DataFrame:
+    def get_chunk(
+        self,
+        rows: Optional[Union[List[int], List[str], slice, int, str]] = None,
+        columns: Optional[Union[List[int], List[str], slice, int, str]] = None,
+    ) -> pd.DataFrame:
         """
         Extract a specific chunk of data from the dataframe.
 
@@ -140,10 +148,9 @@ class DatasheetManager:
 
         return row_data
 
-    def generate_data_description(self,
-                                  llm: BaseChatModel,
-                                  sample_rows: int = 5,
-                                  include_stats: bool = True) -> str:
+    def generate_data_description(
+        self, llm: BaseChatModel, sample_rows: int = 5, include_stats: bool = True
+    ) -> str:
         """
         Generate a descriptive summary of the data using an LLM.
 
@@ -164,7 +171,7 @@ class DatasheetManager:
         # Basic statistics for numeric columns
         stats_text = ""
         if include_stats:
-            numeric_cols = self._df.select_dtypes(include=['number']).columns
+            numeric_cols = self._df.select_dtypes(include=["number"]).columns
             if len(numeric_cols) > 0:
                 stats = self._df[numeric_cols].describe().to_string()
                 stats_text = f"\n\nStatistics for numeric columns:\n{stats}"
@@ -191,10 +198,12 @@ class DatasheetManager:
         response = llm.invoke(prompt)
         return response.content
 
-    def calculate_statistics(self,
-                             columns: Union[str, List[str]],
-                             rows: Optional[Union[List[int], List[str], slice]] = None,
-                             stats: Iterable[str] = ('mean', 'median', 'std', 'min', 'max')) -> Dict[str, Any]:
+    def calculate_statistics(
+        self,
+        columns: Union[str, List[str]],
+        rows: Optional[Union[List[int], List[str], slice]] = None,
+        stats: Iterable[str] = ("mean", "median", "std", "min", "max"),
+    ) -> Dict[str, Any]:
         """
         Perform statistical calculations on specified chunks of data using NumPy for performance.
 
@@ -219,7 +228,9 @@ class DatasheetManager:
             columns = [columns]
 
         # Filter to only numeric columns
-        numeric_cols = [col for col in columns if pd.api.types.is_numeric_dtype(data[col])]
+        numeric_cols = [
+            col for col in columns if pd.api.types.is_numeric_dtype(data[col])
+        ]
         if not numeric_cols:
             return {"error": "No numeric columns found in the specified columns."}
 
@@ -237,24 +248,28 @@ class DatasheetManager:
 
             for stat in stats:
                 # TODO: Rewrite this to use a dictionary of functions
-                if stat == 'mean':
-                    col_stats['mean'] = np.mean(arr)
-                elif stat == 'median':
-                    col_stats['median'] = np.median(arr)
-                elif stat == 'std':
-                    col_stats['std'] = np.std(arr, ddof=1)  # Using ddof=1 to match pandas default
-                elif stat == 'min':
-                    col_stats['min'] = np.min(arr)
-                elif stat == 'max':
-                    col_stats['max'] = np.max(arr)
-                elif stat == 'count':
-                    col_stats['count'] = len(arr)
-                elif stat == 'sum':
-                    col_stats['sum'] = np.sum(arr)
-                elif stat == 'variance' or stat == 'var':
-                    col_stats['variance'] = np.var(arr, ddof=1)  # Using ddof=1 to match pandas default
-                elif stat == 'range':
-                    col_stats['range'] = np.max(arr) - np.min(arr)
+                if stat == "mean":
+                    col_stats["mean"] = np.mean(arr)
+                elif stat == "median":
+                    col_stats["median"] = np.median(arr)
+                elif stat == "std":
+                    col_stats["std"] = np.std(
+                        arr, ddof=1
+                    )  # Using ddof=1 to match pandas default
+                elif stat == "min":
+                    col_stats["min"] = np.min(arr)
+                elif stat == "max":
+                    col_stats["max"] = np.max(arr)
+                elif stat == "count":
+                    col_stats["count"] = len(arr)
+                elif stat == "sum":
+                    col_stats["sum"] = np.sum(arr)
+                elif stat == "variance" or stat == "var":
+                    col_stats["variance"] = np.var(
+                        arr, ddof=1
+                    )  # Using ddof=1 to match pandas default
+                elif stat == "range":
+                    col_stats["range"] = np.max(arr) - np.min(arr)
 
             results[col] = col_stats
 
@@ -266,7 +281,11 @@ class DatasheetManager:
         """
         if self._df is None:
             return "No data loaded. Please load data first."
-        return self._df.to_string() if limit_length is None else self._df.to_string()[:limit_length]
+        return (
+            self._df.to_string()
+            if limit_length is None
+            else self._df.to_string()[:limit_length]
+        )
 
     @property
     def df_filepath(self):
@@ -275,14 +294,19 @@ class DatasheetManager:
         """
         return self._df_filepath
 
+
 ### Pydantic models
 class DatasheetLoadParams(BaseModel):
     file_path: str = Field(..., description="Path to the file to load")
-    sheet_name: Optional[Union[str, int]] = Field(0, description="Sheet name or index for Excel files")
+    sheet_name: Optional[Union[str, int]] = Field(
+        0, description="Sheet name or index for Excel files"
+    )
 
 
 class DatasheetChunkParams(BaseModel):
-    file_path: Optional[str] = Field(None, description="Path to the file to load (if not already loaded)")
+    file_path: Optional[str] = Field(
+        None, description="Path to the file to load (if not already loaded)"
+    )
     rows: Optional[Union[List[int], List[str], int, str]] = Field(
         None, description="Row indices, names, or slice to select"
     )
@@ -292,17 +316,19 @@ class DatasheetChunkParams(BaseModel):
 
 
 class DatasheetStatsReqParams(BaseModel):
-    file_path: Optional[str] = Field(None, description="Path to the file to load (if not already loaded)")
-    columns: Union[str, List[str]] = Field(..., description="Column(s) to calculate statistics for")
+    file_path: Optional[str] = Field(
+        None, description="Path to the file to load (if not already loaded)"
+    )
+    columns: Union[str, List[str]] = Field(
+        ..., description="Column(s) to calculate statistics for"
+    )
     rows: Optional[Union[List[int], List[str]]] = Field(
         None, description="Optional row subset to use (default: all rows)"
     )
     stats: Optional[List[str]] = Field(
         ["mean"],
-        description="Statistics to calculate (e.g., mean, median, std, min, max, count, sum, variance, range)"
+        description="Statistics to calculate (e.g., mean, median, std, min, max, count, sum, variance, range)",
     )
-
-
 
 
 ### Singleton instance

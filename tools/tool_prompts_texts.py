@@ -1,5 +1,6 @@
 from langchain_core.prompts import PromptTemplate
 
+
 def file_summary_prompt(file_type: str, file_content: str):
     prompt_template = PromptTemplate(
         input_variables=["file_type", "file_content"],
@@ -20,10 +21,9 @@ def file_summary_prompt(file_type: str, file_content: str):
     Limit your response to 200 words maximum.
 
     Summary:
-    """
+    """,
     )
     formatted_prompt = prompt_template.format(
-        file_type=file_type,
-        file_content=file_content
+        file_type=file_type, file_content=file_content
     )
     return formatted_prompt
