@@ -560,7 +560,6 @@ def create_interface():
                             type="numpy",
                             label="Record Audio",
                             elem_id="audio_recorder",
-                            sample_rate=16000  # Force recording at 16kHz
                         )
                         audio_playback = gr.Audio(
                             label="Recorded Audio",

@@ -18,86 +18,6 @@ class AudioProcessor:
         self.last_recording_path = None
         self.recording_length = 0
 
-    # def process_recording(self, audio_data, sample_rate):
-    #     """
-    #     Process and save the recorded audio data
-    #
-    #     Args:
-    #         audio_data (numpy.ndarray): The audio data as a numpy array
-    #         sample_rate (int): The sample rate of the audio in Hz
-    #
-    #     Returns:
-    #         tuple: A tuple containing:
-    #             - str or None: Path to saved audio file or None if processing failed
-    #             - str: Status message describing the result
-    #             - float: Duration of the recording in seconds
-    #
-    #     Raises:
-    #         ValueError: If audio_data is invalid or corrupted
-    #     """
-    #     if audio_data is None:
-    #         logger.warning("No audio data received")
-    #         return None, "No audio recorded", 0
-    #
-    #     try:
-    #         logger.info(
-    #             f"Audio data type: {type(audio_data)}, shape: {audio_data.shape if hasattr(audio_data, 'shape') else 'no shape'}, sample_rate: {sample_rate}")
-    #
-    #         # Check if audio data is stereo (has shape [N, 2])
-    #         if hasattr(audio_data, 'ndim') and audio_data.ndim > 1 and audio_data.shape[1] == 2:
-    #             logger.info(f"Converting stereo audio to mono, shape before: {audio_data.shape}")
-    #             # Convert stereo to mono by averaging channels
-    #             audio_data = np.mean(audio_data, axis=1)
-    #             logger.info(f"Shape after conversion: {audio_data.shape}")
-    #
-    #         # Check recording length
-    #         duration_seconds = len(audio_data) / sample_rate
-    #         logger.info(f"Processing recording: {duration_seconds:.2f}s at {sample_rate}Hz")
-    #
-    #         if duration_seconds > self.config.max_recording_length_seconds:
-    #             logger.warning(f"Recording too long: {duration_seconds}s > {self.config.max_recording_length_seconds}s")
-    #             return None, f"Recording too long (max: {self.config.max_recording_length_seconds}s)", 0
-    #
-    #         # Create a temp file with a unique name
-    #         with tempfile.NamedTemporaryFile(suffix=".wav", dir=self.config.temp_dir, delete=False) as tmp:
-    #             temp_path = tmp.name
-    #
-    #         # Calculate recording length
-    #         self.recording_length = duration_seconds
-    #
-    #         # Save the audio file
-    #         try:
-    #             logger.info(f"Audio data: type={type(audio_data)}, shape={audio_data.shape}, dtype={audio_data.dtype}")
-    #             logger.info(
-    #                 f"Audio range: min={np.min(audio_data)}, max={np.max(audio_data)}, mean={np.mean(audio_data)}")
-    #             # Convert to int16 format for better compatibility with Whisper
-    #             audio_data_int16 = (audio_data * 32767).astype(np.int16)
-    #
-    #             with wave.open(temp_path, 'wb') as wf:
-    #                 wf.setnchannels(1)
-    #                 wf.setsampwidth(2)  # 2 bytes for int16
-    #                 wf.setframerate(sample_rate)
-    #                 wf.writeframes(audio_data_int16.tobytes())
-    #
-    #             self.last_recording_path = temp_path
-    #             logger.info(f"Recording saved to {temp_path}")
-    #             return temp_path, f"Recording saved ({self._format_duration(duration_seconds)})", duration_seconds
-    #
-    #         except Exception as e:
-    #             error_msg = str(e)
-    #             logger.error(f"Error saving audio: {error_msg}")
-    #             # Clean up the temp file if it exists
-    #             if os.path.exists(temp_path):
-    #                 try:
-    #                     os.unlink(temp_path)
-    #                 except:
-    #                     pass
-    #             return None, f"Error saving audio: {error_msg}", 0
-    #
-    #     except Exception as e:
-    #         error_msg = str(e)
-    #         logger.error(f"Error processing audio: {error_msg}")
-    #         return None, f"Error processing audio: {error_msg}", 0
     def process_recording(self, audio_data, sample_rate):
         """
         Process and save the recorded audio data with minimal processing to avoid distortion
@@ -139,6 +59,8 @@ class AudioProcessor:
 
                 # Convert to int16 format (required for WAV)
                 # Scale carefully to avoid clipping
+                logger.info(f"Original audio data max value: {np.max(np.abs(audio_data))}")
+                logger.info(f" Audio Dtype: {audio_data.dtype}, shape: {audio_data.shape}")
                 max_val = np.max(np.abs(audio_data))
                 if max_val > 0:  # Avoid division by zero
                     # Scale to range [-0.9, 0.9] to prevent clipping
