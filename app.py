@@ -636,7 +636,8 @@ def create_interface():
                 tts_audio = gr.Audio(
                     label="Analysis Audio",
                     type="filepath",
-                    interactive=False
+                    interactive=False,
+                    autoplay=True
                 )
 
                 # IMPROVED: Simplified Progressive Streaming Audio Component
