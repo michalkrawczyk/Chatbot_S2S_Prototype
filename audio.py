@@ -100,7 +100,7 @@ class AudioProcessor:
     #         return None, f"Error processing audio: {error_msg}", 0
     def process_recording(self, audio_data, sample_rate):
         """
-        Process and save the recorded audio data using ffmpeg for maximum compatibility
+        Process and save the recorded audio data with minimal processing to avoid distortion
 
         Args:
             audio_data (numpy.ndarray): The audio data as a numpy array
@@ -120,75 +120,60 @@ class AudioProcessor:
             # Create temporary directory if it doesn't exist
             os.makedirs(self.config.temp_dir, exist_ok=True)
 
-            # Log detailed information about the audio data
-            logger.info(f"Audio data type: {type(audio_data)}, " +
-                        f"shape: {audio_data.shape if hasattr(audio_data, 'shape') else 'no shape'}, " +
-                        f"sample_rate: {sample_rate}")
-
-            # Step 1: Save raw audio data to a temporary file first
-            raw_temp_file = os.path.join(self.config.temp_dir, f"raw_recording_{int(time.time())}.raw")
+            # Create output filename
+            output_wav = os.path.join(self.config.temp_dir, f"recording_{int(time.time())}.wav")
 
             # Ensure we have a proper numpy array
             if not isinstance(audio_data, np.ndarray):
-                logger.warning(f"Converting audio_data from {type(audio_data)} to numpy array")
                 audio_data = np.array(audio_data)
 
-            # Save raw data
-            with open(raw_temp_file, 'wb') as f:
-                # Save in a format ffmpeg can read
-                if audio_data.ndim > 1:
-                    # For stereo/multi-channel data
-                    np.array(audio_data, dtype=np.float32).tofile(f)
-                else:
-                    # For mono data
-                    np.array(audio_data, dtype=np.float32).tofile(f)
+            # Convert stereo to mono if needed
+            if audio_data.ndim > 1 and audio_data.shape[1] == 2:
+                audio_data = np.mean(audio_data, axis=1)
 
-            # Step 2: Use ffmpeg to convert the raw file to WAV
-            output_wav = os.path.join(self.config.temp_dir, f"recording_{int(time.time())}.wav")
+            # Save directly to WAV file
+            with wave.open(output_wav, 'wb') as wf:
+                wf.setnchannels(1)  # Always mono
+                wf.setsampwidth(2)  # 2 bytes for int16
+                wf.setframerate(sample_rate)
 
-            # Determine channel count
-            channels = 2 if (hasattr(audio_data, 'ndim') and audio_data.ndim > 1 and audio_data.shape[1] == 2) else 1
+                # Convert to int16 format (required for WAV)
+                # Scale carefully to avoid clipping
+                max_val = np.max(np.abs(audio_data))
+                if max_val > 0:  # Avoid division by zero
+                    # Scale to range [-0.9, 0.9] to prevent clipping
+                    audio_data = audio_data / max_val * 0.9
 
-            # Build ffmpeg command
-            cmd = [
-                'ffmpeg',
-                '-y',  # Overwrite output file if it exists
-                '-f', 'f32le',  # Format of input (32-bit float)
-                '-ar', str(sample_rate),  # Sample rate
-                '-ac', str(channels),  # Number of channels
-                '-i', raw_temp_file,  # Input file
-                '-acodec', 'pcm_s16le',  # Output codec (16-bit PCM)
-                '-ar', '16000',  # Output sample rate (16kHz for Whisper)
-                '-ac', '1',  # Convert to mono
-                output_wav  # Output file
-            ]
+                # Convert to int16 (required for WAV)
+                audio_int16 = (audio_data * 32767).astype(np.int16)
+                wf.writeframes(audio_int16.tobytes())
 
-            logger.info(f"Running ffmpeg command: {' '.join(cmd)}")
+            # If sample rate is not 16kHz, resample using ffmpeg
+            if sample_rate != 16000:
+                resampled_wav = os.path.join(self.config.temp_dir, f"resampled_{int(time.time())}.wav")
 
-            # Run ffmpeg
-            try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                logger.info(f"ffmpeg conversion successful: {result.stdout}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"ffmpeg conversion failed: {e.stderr}")
-                return None, f"Error processing audio: ffmpeg conversion failed", 0
+                cmd = [
+                    'ffmpeg',
+                    '-y',  # Overwrite output file if it exists
+                    '-i', output_wav,  # Input file
+                    '-ar', '16000',  # Output sample rate (16kHz)
+                    '-ac', '1',  # Ensure mono
+                    resampled_wav  # Output file
+                ]
 
-            # Clean up raw file
-            try:
-                os.unlink(raw_temp_file)
-            except Exception as e:
-                logger.warning(f"Could not remove temporary raw file: {str(e)}")
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    # Replace original with resampled version
+                    os.replace(resampled_wav, output_wav)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"Resampling failed: {e}")
+                    # Continue with original file
 
-            # Calculate duration from the WAV file
-            try:
-                with wave.open(output_wav, 'rb') as wf:
-                    frames = wf.getnframes()
-                    rate = wf.getframerate()
-                    duration_seconds = frames / float(rate)
-            except Exception as e:
-                logger.error(f"Error getting duration from WAV file: {str(e)}")
-                # Approximate duration as fallback
-                duration_seconds = len(audio_data) / sample_rate
+            # Calculate duration
+            with wave.open(output_wav, 'rb') as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                duration_seconds = frames / float(rate)
 
             # Store file info
             self.last_recording_path = output_wav
@@ -199,7 +184,7 @@ class AudioProcessor:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing audio: {error_msg}")
-            logger.error(traceback.format_exc())  # Print full stack trace
+            logger.error(traceback.format_exc())
             return None, f"Error processing audio: {error_msg}", 0
 
     def process_uploaded_file(self, file_path):
