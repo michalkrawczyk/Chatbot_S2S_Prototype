@@ -11,6 +11,7 @@ from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from general.logs import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT, DEFINED_TOOLS
+from openai_client import SUPPORT_LANGUAGES
 
 
 # Define agent components
@@ -220,8 +221,9 @@ class AgentLLM:
     _llm = None
     _llm_with_tools = None
     _context = ""
+    _summary_language = "eng"
 
-    def initialize_agent(self, api_key, model_name="o3-mini", target_language="eng"):
+    def initialize_agent(self, api_key, model_name="o3-mini"):
         """Initialize the agent with the provided API key."""
         if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o"]:
             logger.warning(f"Unsupported model name: {model_name}.")
@@ -241,12 +243,12 @@ class AgentLLM:
             # TODO: node with tools should be inside main agent?
             self._agent_executor = create_main_agent(
                 llm=self._llm_with_tools,
-                target_language=target_language,
+                target_language=self._summary_language,
                 summary_llm=self._llm,
             )
             self._model_name = model_name
             logger.info(
-                f"Main Agent created with model: {model_name}, language: {target_language}"
+                f"Main Agent created with model: {model_name}, language: {self._summary_language}"
             )
             return True
         return False
@@ -328,3 +330,20 @@ class AgentLLM:
 
         logger.info(f"Setting context for the agent: {context_type} - {context}")
         self._context = (context, context_type)
+
+    def change_summary_language(self, language: str):
+        """Set the language for the summary."""
+        if language in SUPPORT_LANGUAGES:
+            self._summary_language = language
+            logger.info(f"Summary language set to: {language}")
+        else:
+            logger.warning(f"Unsupported summary language: {language}.")
+            return
+
+        if self._agent_executor is not None:
+            self._agent_executor = create_main_agent(
+                llm=self._llm_with_tools,
+                target_language=self._summary_language,
+                summary_llm=self._llm,
+            )
+            logger.info(f"Agent executor updated with new summary language: {language}")

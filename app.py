@@ -951,7 +951,7 @@ def create_interface():
             success = transcriber.initialize_agent_ui(
                 api_key, model, target_language=language_selector.value
             )
-            # TODO: ADD agent reinitialization on language change
+
             if success:
                 conditional_logger_info(
                     f"Agent initialized with model: {model}, is correct: {AgentLLM.get_agent_executor is not None}"
@@ -965,6 +965,16 @@ def create_interface():
             inputs=[agent_model_selector, api_key_input],
             outputs=[agent_status],
         )
+
+        def on_language_change(language):
+            AGENT.change_summary_language(language)
+
+        language_selector.change(
+            fn=on_language_change,
+            inputs=[language_selector],
+            outputs=[agent_status]
+        )
+
 
         # Enable Audio button handler
         def enable_audio():
