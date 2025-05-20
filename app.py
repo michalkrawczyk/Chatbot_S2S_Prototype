@@ -103,9 +103,6 @@ class SpacesTranscriber:
         self.agent_memory = []  # Memory for the agent
         self.thinking_process = ""  # For storing agent's thinking process
         self.current_model = None  # Track the current model
-        self.default_response_language = (
-            "eng"  # Default language for responses (For now, English)
-        )
 
     def connect_to_openai(self, api_key):
         """
@@ -909,11 +906,6 @@ def create_interface():
                     interactive=True,
                 )
 
-                # Copy analysis button
-                copy_analysis_btn = gr.Button(
-                    "Copy Analysis", elem_id="copy_analysis_btn"
-                )
-
         # Event handlers
         def update_recording_info(duration):
             """Update the recording information display"""
@@ -1560,41 +1552,6 @@ def create_interface():
 
             return memory_text
 
-        # Copy functions
-        def copy_to_clipboard(text):
-            return None
-
-        copy_analysis_btn.click(
-            fn=copy_to_clipboard,
-            inputs=[analysis_output],
-            outputs=[],
-            js="""
-            async (text) => {
-                if (!text) {
-                    const el = document.getElementById('copy_analysis_btn');
-                    const originalText = el.textContent;
-                    el.textContent = 'Nothing to copy!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                    return [];
-                }
-
-                try {
-                    await navigator.clipboard.writeText(text);
-                    const el = document.getElementById('copy_analysis_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '✓ Copied!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                } catch (err) {
-                    console.error('Failed to copy: ', err);
-                    const el = document.getElementById('copy_analysis_btn');
-                    const originalText = el.textContent;
-                    el.textContent = '❌ Copy failed!';
-                    setTimeout(() => { el.textContent = originalText; }, 2000);
-                }
-                return [];
-            }
-            """,
-        )
 
     return app
 
