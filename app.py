@@ -125,7 +125,6 @@ class SpacesTranscriber:
             agent_init_success = self.initialize_agent_ui(
                 api_key,
                 model_name=self.current_model,
-                target_language=self.default_response_language,
             )
 
             # Pass agent status to UI
@@ -376,14 +375,14 @@ class SpacesTranscriber:
 
         return results
 
-    def initialize_agent_ui(self, api_key, model_name=None, target_language="eng"):
+    def initialize_agent_ui(self, api_key, model_name=None):
         """Initialize the agent with the OpenAI API key and optional model."""
         if model_name:
             self.current_model = model_name
             logger.info(f"Setting agent model to: {model_name}")
 
         return AGENT.initialize_agent(
-            api_key, model_name=self.current_model, target_language=target_language
+            api_key, model_name=self.current_model,
         )
 
     def analyze_transcription(self, transcription, source_file=None):
@@ -949,7 +948,7 @@ def create_interface():
 
             # Initialize agent with selected model
             success = transcriber.initialize_agent_ui(
-                api_key, model, target_language=language_selector.value
+                api_key, model
             )
 
             if success:
