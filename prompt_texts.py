@@ -62,6 +62,7 @@ RESPONSE GUIDELINES:
 - When using data from tools, explicitly mention the source
 - Focus on unexpected or non-obvious findings
 - Quantify observations whenever possible
+- Analyze the meaning and intent behind the text, not just the literal words
 
 Available tools:
 """
