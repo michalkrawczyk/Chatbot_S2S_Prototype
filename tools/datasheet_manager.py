@@ -308,6 +308,9 @@ class DatasheetChunkParams(BaseModel):
     file_path: Optional[str] = Field(
         None, description="Path to the file to load (if not already loaded)"
     )
+    sheet_name: Optional[Union[str, int]] = Field(
+        0, description="Sheet name or index for Excel files (default: 0, first sheet)"
+    )
     rows: Optional[Union[List[int], List[str], int, str]] = Field(
         None, description="Row indices, names, or slice to select"
     )
