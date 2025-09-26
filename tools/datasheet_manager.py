@@ -36,7 +36,6 @@ class DatasheetManager:
             print(f"Error reading sheet names from {file_path}: {e}")
             return []
 
-
     def load_csv(self, file_path: str, **kwargs) -> None:
         """
         Load data from a CSV file.
@@ -51,7 +50,9 @@ class DatasheetManager:
             f"Loaded CSV file from {file_path} with {len(self._df)} rows and {len(self._df.columns)} columns"
         )
 
-    def load_excel(self, file_path: str, sheet_name=0, show_sheets: bool = False, **kwargs) -> None:
+    def load_excel(
+        self, file_path: str, sheet_name=0, show_sheets: bool = False, **kwargs
+    ) -> None:
         """
         Load data from an Excel file.
 
@@ -69,17 +70,25 @@ class DatasheetManager:
 
         # Validate sheet_name if it's a string
         if isinstance(sheet_name, str) and sheet_name not in available_sheets:
-            raise ValueError(f"Sheet '{sheet_name}' not found. Available sheets: {available_sheets}")
+            raise ValueError(
+                f"Sheet '{sheet_name}' not found. Available sheets: {available_sheets}"
+            )
 
         # Validate sheet index if it's an integer
-        if isinstance(sheet_name, int) and (sheet_name >= len(available_sheets) or sheet_name < 0):
-            raise IndexError(f"Sheet index {sheet_name} out of range. Available sheets: {len(available_sheets)}")
+        if isinstance(sheet_name, int) and (
+            sheet_name >= len(available_sheets) or sheet_name < 0
+        ):
+            raise IndexError(
+                f"Sheet index {sheet_name} out of range. Available sheets: {len(available_sheets)}"
+            )
 
         self._df = pd.read_excel(file_path, sheet_name=sheet_name, **kwargs)
         self._df_filepath = file_path
 
         # Get actual sheet name for display
-        actual_sheet = available_sheets[sheet_name] if isinstance(sheet_name, int) else sheet_name
+        actual_sheet = (
+            available_sheets[sheet_name] if isinstance(sheet_name, int) else sheet_name
+        )
         print(
             f"Loaded Excel file from {file_path} (sheet: {actual_sheet}) with {len(self._df)} rows and {len(self._df.columns)} columns"
         )
