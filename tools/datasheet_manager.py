@@ -18,6 +18,25 @@ class DatasheetManager:
     _df: Optional[pd.DataFrame] = None
     _df_filepath = None
 
+    def get_sheet_names(self, file_path: str) -> List[str]:
+        """
+        Get list of sheet names from an Excel file without loading the data.
+
+        Args:
+            file_path: Path to the Excel file
+
+        Returns:
+            List of sheet names in the Excel file
+        """
+        try:
+            # Using pd.ExcelFile for efficient sheet name extraction
+            with pd.ExcelFile(file_path) as excel_file:
+                return excel_file.sheet_names
+        except Exception as e:
+            print(f"Error reading sheet names from {file_path}: {e}")
+            return []
+
+
     def load_csv(self, file_path: str, **kwargs) -> None:
         """
         Load data from a CSV file.
