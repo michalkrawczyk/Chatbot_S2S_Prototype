@@ -533,8 +533,8 @@ def create_interface():
 
                     # Agent model selector
                     agent_model_selector = gr.Dropdown(
-                        choices=["o3-mini", "gpt-4-turbo", "gpt-4o"],
-                        value="o3-mini",  # Fixed to use a valid default value
+                        choices=["o3-mini", "gpt-4-turbo", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"],
+                        value="gpt-4.1-mini",  # Fixed to use a valid default value
                         label="Agent Model",
                         info="Select the model for the AI agent",
                     )
