@@ -10,7 +10,7 @@ from general.logs import logger
 
 SUPPORT_LANGUAGES_CAST_DICT = {
     "auto": "English",
-    "en": "English",
+    "eng": "English",
     "es": "Spanish",
     "fr": "French",
     "de": "German",
