@@ -32,7 +32,7 @@ def summary_prompt(language=None):
     If you cannot answer the request:
     - Just respond with "I'm sorry I cannot do that" and briefly explain why
     
-    Translate your entire response into {target_language} while maintaining the structure."""
+    IMPORTANT: Provide your response ONLY in {target_language}. Do not include any content in other languages."""
 
     summarize_prompt = ChatPromptTemplate.from_messages(
         [("system", system_text), ("human", "Response to summarize: {response}")]
