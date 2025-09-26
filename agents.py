@@ -223,9 +223,9 @@ class AgentLLM:
     _context = ""
     _summary_language = "eng"
 
-    def initialize_agent(self, api_key, model_name="o3-mini"):
+    def initialize_agent(self, api_key, model_name="gpt-4.1-mini"):
         """Initialize the agent with the provided API key."""
-        if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o"]:
+        if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"]:
             logger.warning(f"Unsupported model name: {model_name}.")
             # TODO: Add later support for other models
             return False
