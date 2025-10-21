@@ -12,3 +12,7 @@ RECURSION_LIMIT = 10
 AGENT_TRACE = True
 AGENT_VERBOSE = True
 KEEP_LAST_UPLOADED_FILE_IN_CONTEXT = True
+
+# Speech-to-Text Model Configuration
+DEFAULT_STT_MODEL = "whisper"  # Options: "whisper", "nemo"
+SUPPORTED_STT_MODELS = ["whisper", "nemo"]

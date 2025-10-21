@@ -16,3 +16,7 @@ pandas
 openpyxl
 google-auth
 google-api-python-client
+# NVIDIA Nemo STT dependencies
+transformers>=4.30.0
+torch>=2.0.0
+torchaudio>=2.0.0

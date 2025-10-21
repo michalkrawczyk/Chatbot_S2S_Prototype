@@ -32,11 +32,12 @@ SUPPORT_LANGUAGES = list(SUPPORT_LANGUAGES_CAST_DICT.keys())
 class OpenAIClient:
     """Handles OpenAI API interactions"""
 
-    def __init__(self, default_api_key=""):
+    def __init__(self, default_api_key="", stt_backend=None):
         self.client = None
         self.connected = False
         self.last_error = None
         self.default_api_key = default_api_key
+        self.stt_backend = stt_backend  # Optional external STT backend
 
         # Try to connect with default key
         if self.default_api_key:
@@ -80,7 +81,7 @@ class OpenAIClient:
 
     def transcribe_audio(self, audio_path, language="auto", max_retries=3):
         """
-        Transcribe audio using OpenAI's Whisper API with retry logic
+        Transcribe audio using configured STT backend or OpenAI's Whisper API with retry logic
 
         Args:
             audio_path (str): Path to the audio file
@@ -90,6 +91,12 @@ class OpenAIClient:
         Returns:
             str: Transcription text or error message
         """
+        # Use external STT backend if configured
+        if self.stt_backend:
+            logger.info(f"Using external STT backend: {type(self.stt_backend).__name__}")
+            return self.stt_backend.transcribe_audio(audio_path, language, max_retries)
+        
+        # Otherwise, use OpenAI Whisper (default behavior)
         if not self.client:
             return "OpenAI client not initialized. Please enter your API key."
 
@@ -148,6 +155,19 @@ class OpenAIClient:
         """
         supported_languages = SUPPORT_LANGUAGES
         return language in supported_languages
+
+    def set_stt_backend(self, stt_backend):
+        """
+        Set the STT backend for transcription
+        
+        Args:
+            stt_backend: Instance of STTInterface or None to use default Whisper
+        """
+        self.stt_backend = stt_backend
+        if stt_backend:
+            logger.info(f"STT backend set to: {type(stt_backend).__name__}")
+        else:
+            logger.info("STT backend reset to default (OpenAI Whisper)")
 
     def text_to_speech(self, text, voice="alloy", stream=True):
         """
