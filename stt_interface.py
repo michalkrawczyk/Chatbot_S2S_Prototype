@@ -1,5 +1,6 @@
 """Speech-to-Text Interface and Implementations"""
 import os
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -11,6 +12,9 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+
+# Supported audio formats for validation
+SUPPORTED_AUDIO_FORMATS = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.webm'}
 
 
 class STTInterface(ABC):
@@ -168,6 +172,11 @@ class NemoSTT(STTInterface):
         if not audio_path or not os.path.exists(audio_path):
             return "No audio file available for transcription."
         
+        # Validate audio file format
+        file_ext = os.path.splitext(audio_path)[1].lower()
+        if file_ext not in SUPPORTED_AUDIO_FORMATS:
+            return f"Unsupported audio format: {file_ext}. Supported formats: {', '.join(SUPPORTED_AUDIO_FORMATS)}"
+        
         retries = 0
         while retries < max_retries:
             try:
@@ -212,20 +221,29 @@ class NemoSTT(STTInterface):
                 logger.info(f"Nemo transcription successful: {len(transcription)} characters")
                 return transcription
                 
-            except Exception as e:
+            except KeyboardInterrupt:
+                raise
+            except SystemExit:
+                raise
+            except RuntimeError as e:
+                # Runtime errors (like CUDA OOM) might be retryable
                 retries += 1
                 error_msg = str(e)
-                logger.warning(f"Nemo transcription attempt {retries} failed: {error_msg}")
+                logger.warning(f"Nemo transcription attempt {retries} failed (retryable): {error_msg}")
                 
                 if retries >= max_retries:
                     logger.error(f"Nemo transcription failed after {max_retries} attempts: {error_msg}")
                     return f"Transcription error: {error_msg}"
                 
                 # Wait before retrying
-                import time
                 wait_time = 2 * retries
                 logger.info(f"Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
+            except Exception as e:
+                # Other errors are likely non-retryable (like invalid file format after we already checked)
+                error_msg = str(e)
+                logger.error(f"Nemo transcription failed: {error_msg}")
+                return f"Transcription error: {error_msg}"
 
     def is_available(self):
         """

@@ -99,6 +99,7 @@ class SpacesTranscriber:
 
     def __init__(self, default_api_key=""):
         self.config = SpacesConfig()
+        self.default_api_key = default_api_key  # Store key in transcriber, not OpenAI client
         self.openai_client = OpenAIClient(default_api_key)
         self.audio_processor = AudioProcessor(self.config)
         self.session_history = []
@@ -179,7 +180,7 @@ class SpacesTranscriber:
         # Automatically transcribe if enabled
         if auto_transcribe:
             # Use provided key or default key
-            key_to_use = api_key if api_key else self.openai_client.default_api_key
+            key_to_use = api_key if api_key else self.default_api_key
 
             if key_to_use:
                 # Ensure we're connected
@@ -255,7 +256,7 @@ class SpacesTranscriber:
 
         # Check API connection
         if not self.openai_client.connected:
-            key_to_use = api_key if api_key else self.openai_client.default_api_key
+            key_to_use = api_key if api_key else self.default_api_key
             if key_to_use:
                 message, success, _ = self.openai_client.connect(key_to_use)
                 if not success:
