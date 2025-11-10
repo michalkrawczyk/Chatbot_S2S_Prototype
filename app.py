@@ -12,12 +12,15 @@ import gradio as gr
 from agents import AgentLLM
 from audio import AudioProcessor
 from general.config import (
+    DEFAULT_STT_MODEL,
     FILE_MEMORY_DIR,
     KEEP_LAST_UPLOADED_FILE_IN_CONTEXT,
     SUPPORTED_FILETYPES,
+    SUPPORTED_STT_MODELS,
 )
 from general.logs import conditional_logger_info, logger
 from openai_client import SUPPORT_LANGUAGES, OpenAIClient
+from stt_interface import STTFactory
 from tools import GOOGLE_API_CLIENT
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
@@ -96,6 +99,7 @@ class SpacesTranscriber:
 
     def __init__(self, default_api_key=""):
         self.config = SpacesConfig()
+        self.default_api_key = default_api_key  # Store key in transcriber, not OpenAI client
         self.openai_client = OpenAIClient(default_api_key)
         self.audio_processor = AudioProcessor(self.config)
         self.session_history = []
@@ -103,6 +107,8 @@ class SpacesTranscriber:
         self.agent_memory = []  # Memory for the agent
         self.thinking_process = ""  # For storing agent's thinking process
         self.current_model = None  # Track the current model
+        self.current_stt_model = DEFAULT_STT_MODEL  # Track the current STT model
+        self.stt_backend = None  # STT backend instance
 
     def connect_to_openai(self, api_key):
         """
@@ -174,7 +180,7 @@ class SpacesTranscriber:
         # Automatically transcribe if enabled
         if auto_transcribe:
             # Use provided key or default key
-            key_to_use = api_key if api_key else self.openai_client.default_api_key
+            key_to_use = api_key if api_key else self.default_api_key
 
             if key_to_use:
                 # Ensure we're connected
@@ -250,7 +256,7 @@ class SpacesTranscriber:
 
         # Check API connection
         if not self.openai_client.connected:
-            key_to_use = api_key if api_key else self.openai_client.default_api_key
+            key_to_use = api_key if api_key else self.default_api_key
             if key_to_use:
                 message, success, _ = self.openai_client.connect(key_to_use)
                 if not success:
@@ -381,6 +387,47 @@ class SpacesTranscriber:
         return AGENT.initialize_agent(
             api_key, model_name=self.current_model,
         )
+
+    def switch_stt_model(self, model_type):
+        """
+        Switch the Speech-to-Text model
+        
+        Args:
+            model_type (str): Type of STT model ("whisper" or "nemo")
+            
+        Returns:
+            str: Status message
+        """
+        try:
+            if model_type not in SUPPORTED_STT_MODELS:
+                return f"Unsupported STT model: {model_type}"
+            
+            logger.info(f"Switching STT model to: {model_type}")
+            
+            if model_type.lower() == "whisper":
+                # Reset to default Whisper
+                self.openai_client.set_stt_backend(None)
+                self.stt_backend = None
+                self.current_stt_model = "whisper"
+                return "✓ Switched to OpenAI Whisper"
+            
+            elif model_type.lower() == "nemo":
+                # Create Nemo backend
+                try:
+                    self.stt_backend = STTFactory.create_stt("nemo")
+                    if self.stt_backend.is_available():
+                        self.openai_client.set_stt_backend(self.stt_backend)
+                        self.current_stt_model = "nemo"
+                        return "✓ Switched to NVIDIA Nemo"
+                    else:
+                        return "❌ Nemo model failed to initialize. Please check dependencies."
+                except Exception as e:
+                    logger.error(f"Error initializing Nemo: {str(e)}")
+                    return f"❌ Error initializing Nemo: {str(e)}"
+            
+        except Exception as e:
+            logger.error(f"Error switching STT model: {str(e)}")
+            return f"❌ Error: {str(e)}"
 
     def analyze_transcription(self, transcription, source_file=None):
         """
@@ -539,6 +586,15 @@ def create_interface():
                         info="Select the model for the AI agent",
                     )
                     agent_status = gr.Markdown("Agent Status: Not initialized")
+
+                    # STT Model selector
+                    stt_model_selector = gr.Dropdown(
+                        choices=SUPPORTED_STT_MODELS,
+                        value=DEFAULT_STT_MODEL,
+                        label="Speech-to-Text Model",
+                        info="Select STT engine: Whisper (OpenAI) or Nemo (NVIDIA)",
+                    )
+                    stt_status = gr.Markdown(f"STT Model: {DEFAULT_STT_MODEL.capitalize()}")
 
                 # Language selection
                 language_selector = gr.Dropdown(
@@ -955,6 +1011,17 @@ def create_interface():
             fn=on_model_change,
             inputs=[agent_model_selector, api_key_input],
             outputs=[agent_status],
+        )
+
+        # STT model selector handler
+        def on_stt_model_change(stt_model):
+            status = transcriber.switch_stt_model(stt_model)
+            return status
+
+        stt_model_selector.change(
+            fn=on_stt_model_change,
+            inputs=[stt_model_selector],
+            outputs=[stt_status],
         )
 
         def on_language_change(language):
