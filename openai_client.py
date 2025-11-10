@@ -60,10 +60,6 @@ class OpenAIClient:
             return "Please enter your OpenAI API key", False, "red"
 
         try:
-            # Log connection attempt without revealing the full key
-            masked_key = f"***{api_key[-4:]}" if len(api_key) > 4 else "***"
-            logger.info(f"Attempting to connect with API key: {masked_key}")
-
             client = OpenAI(api_key=api_key)
             # Test connection with a lightweight call
             client.models.list()
