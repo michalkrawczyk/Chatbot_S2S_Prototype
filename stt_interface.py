@@ -5,6 +5,13 @@ from pathlib import Path
 
 from general.logs import logger
 
+try:
+    import torch
+    import torchaudio
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
 
 class STTInterface(ABC):
     """Abstract base class for Speech-to-Text implementations"""
@@ -101,18 +108,20 @@ class WhisperSTT(STTInterface):
 class NemoSTT(STTInterface):
     """NVIDIA Nemo implementation of STT"""
 
-    def __init__(self, model_name="nvidia/parakeet-tdt-1.1b"):
+    def __init__(self, model_name="nvidia/parakeet-tdt-1.1b", target_sample_rate=16000):
         """
         Initialize NemoSTT with specified model
         
         Args:
             model_name (str): Name of the Nemo model to use
+            target_sample_rate (int): Target sample rate for audio processing (default: 16000 Hz)
         """
         self.model_name = model_name
+        self.target_sample_rate = target_sample_rate
         self.model = None
         self.processor = None
         self._initialize_model()
-        logger.info(f"NemoSTT initialized with model: {model_name}")
+        logger.info(f"NemoSTT initialized with model: {model_name}, target sample rate: {target_sample_rate} Hz")
 
     def _initialize_model(self):
         """Initialize the Nemo model"""
@@ -162,19 +171,19 @@ class NemoSTT(STTInterface):
         retries = 0
         while retries < max_retries:
             try:
-                import torch
-                import torchaudio
+                if not TORCH_AVAILABLE:
+                    return "Torch and torchaudio libraries not available. Please install them to use Nemo."
                 
                 logger.info(f"Transcribing with Nemo: {audio_path}, attempt: {retries + 1}/{max_retries}")
                 
                 # Load audio
                 waveform, sample_rate = torchaudio.load(audio_path)
                 
-                # Resample if needed (Nemo typically expects 16kHz)
-                if sample_rate != 16000:
-                    resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+                # Resample if needed
+                if sample_rate != self.target_sample_rate:
+                    resampler = torchaudio.transforms.Resample(sample_rate, self.target_sample_rate)
                     waveform = resampler(waveform)
-                    sample_rate = 16000
+                    sample_rate = self.target_sample_rate
                 
                 # Convert to mono if stereo
                 if waveform.shape[0] > 1:
@@ -267,6 +276,7 @@ class STTFactory:
             return WhisperSTT(openai_client)
         elif model_type.lower() == "nemo":
             model_name = kwargs.get("model_name", "nvidia/parakeet-tdt-1.1b")
-            return NemoSTT(model_name)
+            target_sample_rate = kwargs.get("target_sample_rate", 16000)
+            return NemoSTT(model_name, target_sample_rate)
         else:
             raise ValueError(f"Unsupported STT model type: {model_type}")
