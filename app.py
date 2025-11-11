@@ -20,8 +20,8 @@ from general.config import (
 )
 from general.logs import conditional_logger_info, logger
 from openai_client import OpenAIClient
-from stt_utils import SUPPORT_LANGUAGES
-from transcription_service import TranscriptionService
+from audio.stt_utils import SUPPORT_LANGUAGES
+from audio.transcription_service import TranscriptionService
 from tools import GOOGLE_API_CLIENT
 
 # Get OpenAI API key from environment variable (for Spaces secrets)

@@ -7,7 +7,7 @@ from pathlib import Path
 from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError
 
 from general.logs import logger
-from stt_utils import SUPPORT_LANGUAGES_CAST_DICT, SUPPORT_LANGUAGES
+from audio.stt_utils import SUPPORT_LANGUAGES_CAST_DICT, SUPPORT_LANGUAGES
 
 
 class OpenAIClient:

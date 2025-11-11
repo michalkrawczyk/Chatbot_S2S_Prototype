@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def test_stt_utils():
     """Test the stt_utils module"""
     print("Testing stt_utils module...")
-    from stt_utils import (
+    from audio.stt_utils import (
         SUPPORTED_AUDIO_FORMATS, 
         SUPPORT_LANGUAGES,
         validate_audio_file,
@@ -78,7 +78,7 @@ def test_architecture():
 def test_interfaces():
     """Test STT interface structure"""
     print("Testing STT interface structure...")
-    from stt_interface import STTInterface, WhisperSTT, NemoSTT
+    from audio.stt_interface import STTInterface, WhisperSTT, NemoSTT
     
     # Check that abstract methods exist
     assert hasattr(STTInterface, 'transcribe_audio')
@@ -102,7 +102,7 @@ def test_interfaces():
 def test_transcription_service():
     """Test TranscriptionService structure"""
     print("Testing TranscriptionService structure...")
-    from transcription_service import TranscriptionService
+    from audio.transcription_service import TranscriptionService
     
     # Check required methods exist
     assert hasattr(TranscriptionService, 'switch_backend')

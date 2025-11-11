@@ -3,9 +3,36 @@
 ## Overview
 This refactoring addresses the architectural flaws, code duplication, and incomplete implementations in the Speech-to-Text (STT) system.
 
+## Project Structure
+
+All audio-related modules are now organized in the `audio/` package:
+```
+audio/
+├── __init__.py                  # Package initialization with lazy imports
+├── audio.py                     # AudioProcessor class
+├── stt_utils.py                 # Shared STT utilities and constants
+├── stt_interface.py             # STT interface and implementations
+└── transcription_service.py     # STT orchestration service
+```
+
 ## Changes Made
 
-### 1. Created `stt_utils.py` - Shared Utilities Module
+### 1. Created `audio/` Package
+**Purpose**: Organize all audio-related code in a dedicated package
+
+**Structure**:
+- `audio/audio.py` - AudioProcessor class for audio recording and processing
+- `audio/stt_utils.py` - Shared utilities module
+- `audio/stt_interface.py` - STT interface and implementations (WhisperSTT, NemoSTT)
+- `audio/transcription_service.py` - STT orchestration service
+- `audio/__init__.py` - Package initialization with lazy imports to avoid heavy dependencies
+
+**Benefits**:
+- Better code organization
+- Clear module boundaries
+- Easier to navigate and maintain
+
+### 2. Created `audio/stt_utils.py` - Shared Utilities Module
 **Purpose**: Eliminate code duplication by providing shared constants and utilities
 
 **Contents**:
@@ -185,16 +212,31 @@ Created `test_stt_refactoring.py` to validate:
 ## Backward Compatibility
 
 ⚠️ **Breaking Changes**:
+- All audio-related modules moved to `audio/` package
 - `OpenAIClient` no longer has `transcribe_audio()`, `set_stt_backend()` methods
 - Applications should use `TranscriptionService` instead
+- Import paths have changed
 
 **Migration Path**:
 ```python
+# Old imports:
+from audio import AudioProcessor
+from stt_utils import SUPPORT_LANGUAGES
+from stt_interface import WhisperSTT, NemoSTT
+from transcription_service import TranscriptionService
+
+# New imports:
+from audio import AudioProcessor
+from audio.stt_utils import SUPPORT_LANGUAGES
+from audio.stt_interface import WhisperSTT, NemoSTT
+from audio.transcription_service import TranscriptionService
+
 # Old way:
 client.transcribe_audio(audio_path, language)
 client.set_stt_backend(backend)
 
 # New way:
+from audio.transcription_service import TranscriptionService
 service = TranscriptionService(client, "whisper")
 service.transcribe_audio(audio_path, language)
 service.switch_backend("nemo")

@@ -7,7 +7,7 @@ from pathlib import Path
 from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError
 
 from general.logs import logger
-from stt_utils import (
+from audio.stt_utils import (
     SUPPORTED_AUDIO_FORMATS,
     SUPPORT_LANGUAGES,
     validate_audio_file,

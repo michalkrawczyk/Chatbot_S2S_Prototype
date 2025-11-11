@@ -1,6 +1,6 @@
 """Transcription Service - Orchestrates STT implementations"""
 from general.logs import logger
-from stt_interface import WhisperSTT, NemoSTT, STTFactory
+from audio.stt_interface import WhisperSTT, NemoSTT, STTFactory
 
 
 class TranscriptionService:
