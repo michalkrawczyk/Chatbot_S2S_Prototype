@@ -19,8 +19,9 @@ from general.config import (
     SUPPORTED_STT_MODELS,
 )
 from general.logs import conditional_logger_info, logger
-from openai_client import SUPPORT_LANGUAGES, OpenAIClient
-from stt_interface import STTFactory
+from openai_client import OpenAIClient
+from audio.stt_utils import SUPPORT_LANGUAGES
+from audio.transcription_service import TranscriptionService
 from tools import GOOGLE_API_CLIENT
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
@@ -108,7 +109,8 @@ class SpacesTranscriber:
         self.thinking_process = ""  # For storing agent's thinking process
         self.current_model = None  # Track the current model
         self.current_stt_model = DEFAULT_STT_MODEL  # Track the current STT model
-        self.stt_backend = None  # STT backend instance
+        # Use TranscriptionService to manage STT backends
+        self.transcription_service = TranscriptionService(self.openai_client, DEFAULT_STT_MODEL)
 
     def connect_to_openai(self, api_key):
         """
@@ -200,7 +202,7 @@ class SpacesTranscriber:
                         status_msg += " (used cached transcription)"
                     else:
                         logger.info(f"Transcribing audio: {audio_path}")
-                        transcription = self.openai_client.transcribe_audio(
+                        transcription = self.transcription_service.transcribe_audio(
                             audio_path, language
                         )
 
@@ -268,7 +270,7 @@ class SpacesTranscriber:
 
         # Now transcribe
         logger.info(f"Transcribing audio: {audio_path}, language: {language}")
-        transcription = self.openai_client.transcribe_audio(audio_path, language)
+        transcription = self.transcription_service.transcribe_audio(audio_path, language)
 
         if (
             transcription
@@ -404,26 +406,14 @@ class SpacesTranscriber:
             
             logger.info(f"Switching STT model to: {model_type}")
             
-            if model_type.lower() == "whisper":
-                # Reset to default Whisper
-                self.openai_client.set_stt_backend(None)
-                self.stt_backend = None
-                self.current_stt_model = "whisper"
-                return "✓ Switched to OpenAI Whisper"
+            # Use TranscriptionService to switch backends
+            success, message = self.transcription_service.switch_backend(model_type)
             
-            elif model_type.lower() == "nemo":
-                # Create Nemo backend
-                try:
-                    self.stt_backend = STTFactory.create_stt("nemo")
-                    if self.stt_backend.is_available():
-                        self.openai_client.set_stt_backend(self.stt_backend)
-                        self.current_stt_model = "nemo"
-                        return "✓ Switched to NVIDIA Nemo"
-                    else:
-                        return "❌ Nemo model failed to initialize. Please check dependencies."
-                except Exception as e:
-                    logger.error(f"Error initializing Nemo: {str(e)}")
-                    return f"❌ Error initializing Nemo: {str(e)}"
+            if success:
+                self.current_stt_model = model_type
+                return message
+            else:
+                return message
             
         except Exception as e:
             logger.error(f"Error switching STT model: {str(e)}")
