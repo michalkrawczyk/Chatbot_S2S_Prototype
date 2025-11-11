@@ -45,8 +45,7 @@ To use NVIDIA Nemo models (like `nvidia/parakeet-tdt-1.1b`), you need to install
 pip install nemo_toolkit[asr]
 ```
 
-**Note**: The default Nemo model `nvidia/parakeet-tdt-1.1b` requires `nemo_toolkit` to function properly. 
-Without `nemo_toolkit`, the system will attempt to use HuggingFace transformers as a fallback, but this may not work for all Nemo models.
+**Note**: The `nemo_toolkit[asr]` package is required to use NVIDIA Nemo models.
 
 ## Configuration
 
