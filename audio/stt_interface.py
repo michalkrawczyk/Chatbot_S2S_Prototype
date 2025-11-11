@@ -180,9 +180,9 @@ class WhisperSTT(STTInterface):
         Check if Whisper service is available
         
         Returns:
-            bool: True if OpenAI client is connected
+            bool: True if OpenAI client is initialized (not necessarily connected)
         """
-        return self.openai_client.connected if self.openai_client else False
+        return self.openai_client is not None
 
     def validate_language(self, language):
         """
@@ -218,8 +218,15 @@ class NemoSTT(STTInterface):
     def _initialize_model(self):
         """Initialize the Nemo model"""
         try:
-            from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
             import torch
+            
+            # Try to import nemo_toolkit first
+            try:
+                import nemo.collections.asr as nemo_asr
+                use_nemo_toolkit = True
+            except ImportError:
+                logger.warning("nemo_toolkit not available, trying HuggingFace transformers as fallback")
+                use_nemo_toolkit = False
             
             logger.info(f"Loading Nemo model: {self.model_name}")
             
@@ -227,16 +234,41 @@ class NemoSTT(STTInterface):
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {device}")
             
-            # Load processor and model
-            self.processor = AutoProcessor.from_pretrained(self.model_name)
-            self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            )
-            self.model.to(device)
-            self.device = device
+            if use_nemo_toolkit:
+                # Load using Nemo toolkit (preferred method for Nemo models)
+                try:
+                    self.model = nemo_asr.models.ASRModel.from_pretrained(self.model_name)
+                    self.device = device
+                    if device == "cuda":
+                        self.model = self.model.to(device)
+                    self.model.eval()
+                    # Nemo models don't need a separate processor
+                    self.processor = None
+                    logger.info(f"NemoSTT initialized successfully with nemo_toolkit: {self.model_name}")
+                except Exception as e:
+                    logger.error(f"Error loading Nemo model with nemo_toolkit: {str(e)}")
+                    logger.info("Falling back to HuggingFace transformers")
+                    use_nemo_toolkit = False
             
-            logger.info(f"NemoSTT initialized successfully with model: {self.model_name}, target sample rate: {self.target_sample_rate} Hz")
+            if not use_nemo_toolkit:
+                # Fallback to HuggingFace transformers for models that support it
+                try:
+                    from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
+                    
+                    self.processor = AutoProcessor.from_pretrained(self.model_name)
+                    self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                        self.model_name,
+                        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                    )
+                    self.model.to(device)
+                    self.device = device
+                    logger.info(f"NemoSTT initialized successfully with transformers: {self.model_name}")
+                except Exception as e:
+                    logger.error(f"Error loading model with transformers: {str(e)}")
+                    logger.error(f"Model '{self.model_name}' may require nemo_toolkit to be installed.")
+                    logger.error("To use NVIDIA Nemo models, install: pip install nemo_toolkit[asr]")
+                    raise
+                
         except Exception as e:
             logger.error(f"Error initializing Nemo model: {str(e)}")
             self.model = None
@@ -258,7 +290,7 @@ class NemoSTT(STTInterface):
         if self.circuit_breaker.is_open():
             return "Service temporarily unavailable due to repeated failures. Please try again later."
         
-        if not self.model or not self.processor:
+        if not self.model:
             return "Nemo model not initialized. Please check installation."
         
         # Validate audio file
@@ -278,46 +310,52 @@ class NemoSTT(STTInterface):
                 
                 logger.info(f"Transcribing with Nemo: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
                 
-                # Load audio
-                waveform, sample_rate = torchaudio.load(audio_path)
-                
-                # Resample if needed
-                if sample_rate != self.target_sample_rate:
-                    resampler = torchaudio.transforms.Resample(sample_rate, self.target_sample_rate)
-                    waveform = resampler(waveform)
-                    sample_rate = self.target_sample_rate
-                
-                # Convert to mono if stereo
-                if waveform.shape[0] > 1:
-                    waveform = torch.mean(waveform, dim=0, keepdim=True)
-                
-                # Prepare inputs
-                inputs = self.processor(
-                    waveform.squeeze().numpy(),
-                    sampling_rate=sample_rate,
-                    return_tensors="pt"
-                )
-                
-                # Move inputs to device
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                
-                # Add language parameter if supported and not auto
-                # Note: Language support depends on the specific model
-                # Some Nemo models may accept language hints through different mechanisms
-                if language and language != "auto":
-                    # For models that support language parameter, add it here
-                    # This is model-specific and may need to be adjusted
-                    logger.info(f"Processing with language hint: {language}")
-                
-                # Generate transcription
-                with torch.no_grad():
-                    generated_ids = self.model.generate(**inputs)
-                
-                # Decode transcription
-                transcription = self.processor.batch_decode(
-                    generated_ids,
-                    skip_special_tokens=True
-                )[0]
+                # Check if using nemo_toolkit or transformers
+                if self.processor is None:
+                    # Using nemo_toolkit - simpler API
+                    transcription = self.model.transcribe([audio_path])[0]
+                else:
+                    # Using transformers - need to process audio manually
+                    # Load audio
+                    waveform, sample_rate = torchaudio.load(audio_path)
+                    
+                    # Resample if needed
+                    if sample_rate != self.target_sample_rate:
+                        resampler = torchaudio.transforms.Resample(sample_rate, self.target_sample_rate)
+                        waveform = resampler(waveform)
+                        sample_rate = self.target_sample_rate
+                    
+                    # Convert to mono if stereo
+                    if waveform.shape[0] > 1:
+                        waveform = torch.mean(waveform, dim=0, keepdim=True)
+                    
+                    # Prepare inputs
+                    inputs = self.processor(
+                        waveform.squeeze().numpy(),
+                        sampling_rate=sample_rate,
+                        return_tensors="pt"
+                    )
+                    
+                    # Move inputs to device
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    
+                    # Add language parameter if supported and not auto
+                    # Note: Language support depends on the specific model
+                    # Some Nemo models may accept language hints through different mechanisms
+                    if language and language != "auto":
+                        # For models that support language parameter, add it here
+                        # This is model-specific and may need to be adjusted
+                        logger.info(f"Processing with language hint: {language}")
+                    
+                    # Generate transcription
+                    with torch.no_grad():
+                        generated_ids = self.model.generate(**inputs)
+                    
+                    # Decode transcription
+                    transcription = self.processor.batch_decode(
+                        generated_ids,
+                        skip_special_tokens=True
+                    )[0]
                 
                 logger.info(f"Nemo transcription successful: {len(transcription)} characters")
                 self.circuit_breaker.record_success()  # Reset circuit breaker on success
@@ -354,9 +392,9 @@ class NemoSTT(STTInterface):
         Check if Nemo service is available
         
         Returns:
-            bool: True if model is loaded
+            bool: True if model is loaded (processor is optional for nemo_toolkit)
         """
-        return self.model is not None and self.processor is not None
+        return self.model is not None
 
     def validate_language(self, language):
         """

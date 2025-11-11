@@ -17,6 +17,10 @@ openpyxl
 google-auth
 google-api-python-client
 # NVIDIA Nemo STT dependencies
+# Option 1: Use nemo_toolkit (recommended for NVIDIA Nemo models like parakeet)
+# Uncomment the following line to enable nemo_toolkit:
+# nemo_toolkit[asr]
+# Option 2: Use HuggingFace transformers (fallback for compatible models)
 transformers>=4.30.0
 torch>=2.0.0
 torchaudio>=2.0.0
