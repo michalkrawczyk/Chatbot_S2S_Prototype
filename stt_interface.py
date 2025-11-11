@@ -125,7 +125,6 @@ class NemoSTT(STTInterface):
         self.model = None
         self.processor = None
         self._initialize_model()
-        logger.info(f"NemoSTT initialized with model: {model_name}, target sample rate: {target_sample_rate} Hz")
 
     def _initialize_model(self):
         """Initialize the Nemo model"""
@@ -148,7 +147,7 @@ class NemoSTT(STTInterface):
             self.model.to(device)
             self.device = device
             
-            logger.info("Nemo model loaded successfully")
+            logger.info(f"NemoSTT initialized successfully with model: {self.model_name}, target sample rate: {self.target_sample_rate} Hz")
         except Exception as e:
             logger.error(f"Error initializing Nemo model: {str(e)}")
             self.model = None
