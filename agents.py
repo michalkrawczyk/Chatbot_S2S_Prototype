@@ -234,7 +234,7 @@ class AgentLLM:
             os.environ["OPENAI_API_KEY"] = api_key
             self._llm = (
                 ChatOpenAI(model=model_name, temperature=0.0)
-                if model_name != "o3-mini"
+                if model_name not in ["o3-mini", "gpt-5-mini"]
                 else ChatOpenAI(model=model_name)
             )
 
