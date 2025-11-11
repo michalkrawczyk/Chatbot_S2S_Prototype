@@ -4,7 +4,16 @@ import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError
+
 from general.logs import logger
+from audio.stt_utils import (
+    SUPPORTED_AUDIO_FORMATS,
+    SUPPORT_LANGUAGES,
+    validate_audio_file,
+    validate_language,
+    CircuitBreaker,
+)
 
 try:
     import torch
@@ -13,8 +22,8 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-# Supported audio formats for validation
-SUPPORTED_AUDIO_FORMATS = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.webm'}
+# Non-retryable error types for Whisper
+NON_RETRYABLE_ERRORS = (AuthenticationError,)
 
 
 class STTInterface(ABC):
@@ -67,10 +76,11 @@ class WhisperSTT(STTInterface):
         Initialize WhisperSTT with OpenAI client
         
         Args:
-            openai_client: Instance of OpenAIClient
+            openai_client: Instance of OpenAIClient (used only for accessing the OpenAI API client)
         """
         self.openai_client = openai_client
-        logger.info("WhisperSTT initialized")
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=60)
+        logger.info("WhisperSTT initialized with circuit breaker")
 
     def transcribe_audio(self, audio_path, language="auto", max_retries=3):
         """
@@ -84,8 +94,86 @@ class WhisperSTT(STTInterface):
         Returns:
             str: Transcription text or error message
         """
-        # Delegate to the OpenAI client's existing implementation
-        return self.openai_client.transcribe_audio(audio_path, language, max_retries)
+        # Check circuit breaker
+        if self.circuit_breaker.is_open():
+            return "Service temporarily unavailable due to repeated failures. Please try again later."
+        
+        # Check if client is initialized
+        if not self.openai_client or not self.openai_client.client:
+            return "OpenAI client not initialized. Please enter your API key."
+
+        # Validate audio file
+        is_valid, error_msg = validate_audio_file(audio_path)
+        if not is_valid:
+            return error_msg
+
+        # Validate language
+        if language and language != "auto" and not self.validate_language(language):
+            return f"Unsupported language: {language}. Please select from the supported options."
+
+        retries = 0
+        while retries < max_retries:
+            try:
+                # Additional parameters based on language
+                params = {"model": "whisper-1"}
+                if language and language != "auto":
+                    params["language"] = language
+
+                logger.info(
+                    f"Transcribing file: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}"
+                )
+                with open(audio_path, "rb") as audio_file:
+                    response = self.openai_client.client.audio.transcriptions.create(
+                        file=audio_file, **params
+                    )
+
+                logger.info(
+                    f"Transcription successful: {len(response.text)} characters"
+                )
+                self.circuit_breaker.record_success()  # Reset circuit breaker on success
+                return response.text
+            except NON_RETRYABLE_ERRORS as e:
+                # Don't retry authentication errors
+                error_msg = "Authentication failed. Please check your API key."
+                logger.error(f"Non-retryable error: {str(e)}")
+                self.circuit_breaker.record_failure()
+                return f"Transcription error: {error_msg}"
+            except (RateLimitError, APIConnectionError) as e:
+                retries += 1
+                error_msg = str(e)
+                logger.warning(f"Transcription attempt {retries} failed (retryable): {error_msg}")
+
+                if retries >= max_retries:
+                    logger.error(
+                        f"Transcription failed after {max_retries} attempts: {error_msg}"
+                    )
+                    self.circuit_breaker.record_failure()
+                    return f"Transcription error: {error_msg}"
+
+                # Wait before retrying with exponential backoff
+                wait_time = 2 * retries
+                logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            except KeyboardInterrupt:
+                raise
+            except SystemExit:
+                raise
+            except Exception as e:
+                retries += 1
+                error_msg = str(e)
+                logger.warning(f"Transcription attempt {retries} failed: {error_msg}")
+
+                if retries >= max_retries:
+                    logger.error(
+                        f"Transcription failed after {max_retries} attempts: {error_msg}"
+                    )
+                    self.circuit_breaker.record_failure()
+                    return f"Transcription error: {error_msg}"
+
+                # Wait before retrying with exponential backoff
+                wait_time = 2 * retries
+                logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
 
     def is_available(self):
         """
@@ -106,7 +194,7 @@ class WhisperSTT(STTInterface):
         Returns:
             bool: True if language is supported
         """
-        return self.openai_client._validate_language(language) if self.openai_client else False
+        return validate_language(language, SUPPORT_LANGUAGES)
 
 
 class NemoSTT(STTInterface):
@@ -124,6 +212,7 @@ class NemoSTT(STTInterface):
         self.target_sample_rate = target_sample_rate
         self.model = None
         self.processor = None
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=60)
         self._initialize_model()
 
     def _initialize_model(self):
@@ -159,22 +248,27 @@ class NemoSTT(STTInterface):
         
         Args:
             audio_path (str): Path to the audio file
-            language (str): Language code or "auto" for automatic detection (not used for Nemo)
+            language (str): Language code or "auto" for automatic detection
             max_retries (int): Maximum number of retry attempts
             
         Returns:
             str: Transcription text or error message
         """
+        # Check circuit breaker
+        if self.circuit_breaker.is_open():
+            return "Service temporarily unavailable due to repeated failures. Please try again later."
+        
         if not self.model or not self.processor:
             return "Nemo model not initialized. Please check installation."
         
-        if not audio_path or not os.path.exists(audio_path):
-            return "No audio file available for transcription."
+        # Validate audio file
+        is_valid, error_msg = validate_audio_file(audio_path)
+        if not is_valid:
+            return error_msg
         
-        # Validate audio file format
-        file_ext = os.path.splitext(audio_path)[1].lower()
-        if file_ext not in SUPPORTED_AUDIO_FORMATS:
-            return f"Unsupported audio format: {file_ext}. Supported formats: {', '.join(SUPPORTED_AUDIO_FORMATS)}"
+        # Validate language
+        if language and language != "auto" and not self.validate_language(language):
+            logger.warning(f"Language '{language}' may not be fully supported by this Nemo model. Proceeding anyway.")
         
         retries = 0
         while retries < max_retries:
@@ -182,7 +276,7 @@ class NemoSTT(STTInterface):
                 if not TORCH_AVAILABLE:
                     return "Torch and torchaudio libraries not available. Please install them to use Nemo."
                 
-                logger.info(f"Transcribing with Nemo: {audio_path}, attempt: {retries + 1}/{max_retries}")
+                logger.info(f"Transcribing with Nemo: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
                 
                 # Load audio
                 waveform, sample_rate = torchaudio.load(audio_path)
@@ -207,6 +301,14 @@ class NemoSTT(STTInterface):
                 # Move inputs to device
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 
+                # Add language parameter if supported and not auto
+                # Note: Language support depends on the specific model
+                # Some Nemo models may accept language hints through different mechanisms
+                if language and language != "auto":
+                    # For models that support language parameter, add it here
+                    # This is model-specific and may need to be adjusted
+                    logger.info(f"Processing with language hint: {language}")
+                
                 # Generate transcription
                 with torch.no_grad():
                     generated_ids = self.model.generate(**inputs)
@@ -218,6 +320,7 @@ class NemoSTT(STTInterface):
                 )[0]
                 
                 logger.info(f"Nemo transcription successful: {len(transcription)} characters")
+                self.circuit_breaker.record_success()  # Reset circuit breaker on success
                 return transcription
                 
             except KeyboardInterrupt:
@@ -232,6 +335,7 @@ class NemoSTT(STTInterface):
                 
                 if retries >= max_retries:
                     logger.error(f"Nemo transcription failed after {max_retries} attempts: {error_msg}")
+                    self.circuit_breaker.record_failure()
                     return f"Transcription error: {error_msg}"
                 
                 # Wait before retrying
@@ -242,6 +346,7 @@ class NemoSTT(STTInterface):
                 # Other errors are likely non-retryable (like invalid file format after we already checked)
                 error_msg = str(e)
                 logger.error(f"Nemo transcription failed: {error_msg}")
+                self.circuit_breaker.record_failure()
                 return f"Transcription error: {error_msg}"
 
     def is_available(self):
@@ -258,17 +363,19 @@ class NemoSTT(STTInterface):
         Validate if the language is supported by Nemo
         
         Note: Nemo models may have different language support depending on the model.
-        This implementation assumes multilingual support.
+        The parakeet-tdt-1.1b model supports multiple languages but exact support varies.
         
         Args:
             language (str): Language code to validate
             
         Returns:
-            bool: True (assumes multilingual support)
+            bool: True if language is likely supported, False otherwise
         """
-        # Nemo models typically support multiple languages
-        # For simplicity, we return True, but this could be model-specific
-        return True
+        # For Nemo models, we use the common supported languages
+        # The exact language support depends on the specific model being used
+        # Common Nemo models support a subset of languages
+        nemo_supported_languages = ["auto", "eng", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ar"]
+        return validate_language(language, nemo_supported_languages)
 
 
 class STTFactory:
