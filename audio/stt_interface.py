@@ -130,10 +130,9 @@ class WhisperSTT(STTInterface):
                 logger.info(
                     f"Transcription successful: {len(response.text)} characters"
                 )
-                self.circuit_breaker.record_success()  # Reset circuit breaker on success
+                self.circuit_breaker.record_success()
                 return response.text
             except NON_RETRYABLE_ERRORS as e:
-                # Don't retry authentication errors
                 error_msg = "Authentication failed. Please check your API key."
                 logger.error(f"Non-retryable error: {str(e)}")
                 self.circuit_breaker.record_failure()
@@ -150,7 +149,6 @@ class WhisperSTT(STTInterface):
                     self.circuit_breaker.record_failure()
                     return f"Transcription error: {error_msg}"
 
-                # Wait before retrying with exponential backoff
                 wait_time = 2 * retries
                 logger.info(f"Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
@@ -170,7 +168,6 @@ class WhisperSTT(STTInterface):
                     self.circuit_breaker.record_failure()
                     return f"Transcription error: {error_msg}"
 
-                # Wait before retrying with exponential backoff
                 wait_time = 2 * retries
                 logger.info(f"Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
@@ -178,19 +175,19 @@ class WhisperSTT(STTInterface):
     def is_available(self):
         """
         Check if Whisper service is available
-        
+
         Returns:
-            bool: True if OpenAI client is initialized (not necessarily connected)
+            bool: True if OpenAI client is initialized
         """
         return self.openai_client is not None
 
     def validate_language(self, language):
         """
         Validate if the language is supported by Whisper
-        
+
         Args:
             language (str): Language code to validate
-            
+
         Returns:
             bool: True if language is supported
         """
@@ -203,7 +200,7 @@ class NemoSTT(STTInterface):
     def __init__(self, model_name="nvidia/parakeet-tdt-1.1b", target_sample_rate=16000):
         """
         Initialize NemoSTT with specified model
-        
+
         Args:
             model_name (str): Name of the Nemo model to use
             target_sample_rate (int): Target sample rate for audio processing (default: 16000 Hz)
@@ -212,31 +209,38 @@ class NemoSTT(STTInterface):
         self.target_sample_rate = target_sample_rate
         self.model = None
         self.processor = None
+        self.device = None
         self.circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=60)
         self._initialize_model()
 
     def _initialize_model(self):
         """Initialize the Nemo model using nemo_toolkit"""
         try:
-            import torch
             import nemo.collections.asr as nemo_asr
-            
+
             logger.info(f"Loading Nemo model: {self.model_name}")
-            
-            # Determine device
+            start_time = time.time()
+
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {device}")
-            
-            # Load using Nemo toolkit
+
             self.model = nemo_asr.models.ASRModel.from_pretrained(self.model_name)
             self.device = device
+
             if device == "cuda":
                 self.model = self.model.to(device)
+                try:
+                    self.model = self.model.half()
+                    logger.info("Enabled half-precision (FP16) for faster inference")
+                except Exception as e:
+                    logger.warning(f"Could not enable half-precision: {e}")
+
             self.model.eval()
-            # Nemo models don't need a separate processor
             self.processor = None
-            logger.info(f"NemoSTT initialized successfully with nemo_toolkit: {self.model_name}")
-                
+
+            load_time = time.time() - start_time
+            logger.info(f"NemoSTT initialized successfully: {self.model_name} (loaded in {load_time:.2f}s)")
+
         except ImportError as e:
             logger.error(f"Error importing nemo_toolkit: {str(e)}")
             logger.error("To use NVIDIA Nemo models, install: pip install nemo_toolkit[asr]")
@@ -250,64 +254,62 @@ class NemoSTT(STTInterface):
     def transcribe_audio(self, audio_path, language="auto", max_retries=3):
         """
         Transcribe audio using NVIDIA Nemo
-        
+
         Args:
             audio_path (str): Path to the audio file
             language (str): Language code or "auto" for automatic detection
             max_retries (int): Maximum number of retry attempts
-            
+
         Returns:
             str: Transcription text or error message
         """
-        # Check circuit breaker
         if self.circuit_breaker.is_open():
             return "Service temporarily unavailable due to repeated failures. Please try again later."
-        
+
         if not self.model:
             return "Nemo model not initialized. Please install nemo_toolkit[asr]."
-        
-        # Validate audio file
+
         is_valid, error_msg = validate_audio_file(audio_path)
         if not is_valid:
             return error_msg
-        
-        # Validate language
+
         if language and language != "auto" and not self.validate_language(language):
             logger.warning(f"Language '{language}' may not be fully supported by this Nemo model. Proceeding anyway.")
-        
+
         retries = 0
         while retries < max_retries:
             try:
                 logger.info(f"Transcribing with Nemo: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
-                
-                # Using nemo_toolkit API
-                transcription = self.model.transcribe([audio_path])[0]
-                
+
+                hypotheses = self.model.transcribe([audio_path])
+
+                if hypotheses and len(hypotheses) > 0:
+                    transcription = hypotheses[0].text if hasattr(hypotheses[0], 'text') else str(hypotheses[0])
+                else:
+                    transcription = ""
+
                 logger.info(f"Nemo transcription successful: {len(transcription)} characters")
-                self.circuit_breaker.record_success()  # Reset circuit breaker on success
+                self.circuit_breaker.record_success()
                 return transcription
-                
+
             except KeyboardInterrupt:
                 raise
             except SystemExit:
                 raise
             except RuntimeError as e:
-                # Runtime errors (like CUDA OOM) might be retryable
                 retries += 1
                 error_msg = str(e)
                 logger.warning(f"Nemo transcription attempt {retries} failed (retryable): {error_msg}")
-                
+
                 if retries >= max_retries:
                     logger.error(f"Nemo transcription failed after {max_retries} attempts: {error_msg}")
                     self.circuit_breaker.record_failure()
                     return f"Transcription error: {error_msg}"
-                
-                # Wait before retrying
+
                 wait_time = 2 * retries
                 logger.info(f"Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
             except Exception as e:
-                # Other errors are likely non-retryable (like invalid file format after we already checked)
                 error_msg = str(e)
                 logger.error(f"Nemo transcription failed: {error_msg}")
                 self.circuit_breaker.record_failure()
@@ -316,44 +318,38 @@ class NemoSTT(STTInterface):
     def is_available(self):
         """
         Check if Nemo service is available
-        
+
         Returns:
-            bool: True if model is loaded (processor is optional for nemo_toolkit)
+            bool: True if model is loaded successfully
         """
         return self.model is not None
 
     def validate_language(self, language):
         """
         Validate if the language is supported by Nemo
-        
-        Note: Nemo models may have different language support depending on the model.
-        The parakeet-tdt-1.1b model supports multiple languages but exact support varies.
-        
+
         Args:
             language (str): Language code to validate
-            
+
         Returns:
-            bool: True if language is likely supported, False otherwise
+            bool: True if language is likely supported
         """
-        # For Nemo models, we use the common supported languages
-        # The exact language support depends on the specific model being used
-        # Common Nemo models support a subset of languages
         nemo_supported_languages = ["auto", "eng", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ar"]
         return validate_language(language, nemo_supported_languages)
 
 
 class STTFactory:
     """Factory class to create STT instances"""
-    
+
     @staticmethod
     def create_stt(model_type, **kwargs):
         """
         Create an STT instance based on model type
-        
+
         Args:
             model_type (str): Type of STT model ("whisper" or "nemo")
             **kwargs: Additional arguments for STT initialization
-            
+
         Returns:
             STTInterface: Instance of the requested STT implementation
         """
