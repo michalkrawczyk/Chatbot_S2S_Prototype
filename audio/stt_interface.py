@@ -194,7 +194,11 @@ class WhisperSTT(STTInterface):
         return validate_language(language, SUPPORT_LANGUAGES)
 
 
+<<<<<<< HEAD
 class NemoSTT(STTInterface):
+=======
+class CanarySTT(STTInterface):
+>>>>>>> origin/main
     """NVIDIA Canary implementation of STT"""
 
     def __init__(self, model_name="nvidia/canary-1b", target_sample_rate=16000):
@@ -380,6 +384,6 @@ class STTFactory:
         elif model_type.lower() in ["nemo", "canary"]:
             model_name = kwargs.get("model_name", "nvidia/canary-1b")
             target_sample_rate = kwargs.get("target_sample_rate", 16000)
-            return NemoSTT(model_name, target_sample_rate)
+            return CanarySTT(model_name, target_sample_rate)
         else:
             raise ValueError(f"Unsupported STT model type: {model_type}. Supported: 'whisper', 'canary'")
