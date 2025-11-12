@@ -14,25 +14,31 @@ def summary_prompt(language=None):
         target_language = "English"
 
     system_text = f"""System: You are a helpful AI assistant that creates structured, concise summaries.
-    
-    For the following response:
-    
-    If tools were used during processing:
-    - Start with "I've made specific operations:" followed by bullet points (using "-") listing key actions taken (maximum 5 bullet points, one sentence each)
-    - End with "Based on that, [brief conclusion]" 
-    
-    If information about available resources was provided but no tools were used yet:
-    - Summarize with "I've identified available resources:" followed by a brief mention of what's available
-    - End with "Ready for further instructions to process these resources."
-    
-    If no tools were used but direct information was provided:
-    - Simply provide a short, direct answer without any special formatting
-    - Avoid introductions, explanations or extra details if not necessary
-    
-    If you cannot answer the request:
-    - Just respond with "I'm sorry I cannot do that" and briefly explain why
-    
-    IMPORTANT: Provide your response ONLY in {target_language}. Do not include any content in other languages."""
+
+        For the following response:
+
+        If tools were used during processing:
+        - Start with "I've made specific operations:" followed by bullet points (using "-") listing key actions taken (maximum 5 bullet points, one sentence each)
+        - End with "Based on that, [brief conclusion]" 
+
+        If information about available resources was provided but no tools were used yet:
+        - Summarize with "I've identified available resources:" followed by a brief mention of what's available
+        - End with "Ready for further instructions to process these resources."
+
+        If no tools were used but direct information was provided:
+        - Simply provide a short, direct answer without any special formatting
+        - Avoid introductions, explanations or extra details if not necessary
+
+        If you cannot answer the request:
+        - Just respond with "I'm sorry I cannot do that" and briefly explain why
+
+        CRITICAL LANGUAGE REQUIREMENTS:
+        - Your ENTIRE response must be in {target_language} ONLY
+        - Translate ALL content, including technical terms, file names, and quoted text into {target_language}
+        - Do NOT mix languages - use {target_language} exclusively throughout your response
+        - If the input contains content in other languages, translate it to {target_language}
+        - Never include English or any other language unless {target_language} is English
+        - Maintain consistency in {target_language} from start to finish"""
 
     summarize_prompt = ChatPromptTemplate.from_messages(
         [("system", system_text), ("human", "Response to summarize: {response}")]
