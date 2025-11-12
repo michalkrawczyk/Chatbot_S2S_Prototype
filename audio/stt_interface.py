@@ -285,8 +285,9 @@ class NemoSTT(STTInterface):
                 if language and language != "auto":
                     # Convert "eng" to "en", keep others as-is
                     lang_code = "en" if language == "eng" else language
-                    # Canary prompt format: "<|source_lang|><|transcribe|>"
-                    prompt = f"<|{lang_code}|><|transcribe|>"
+                    # Canary prompt format: "<|source_lang|><|task|><|style|>"
+                    # style: "pc" = with punctuation/capitalization, "npc" = no punctuation
+                    prompt = f"<|{lang_code}|><|transcribe|><|pc|>"
                     logger.info(f"Using Canary prompt: {prompt}")
                     hypotheses = self.model.transcribe(
                         [audio_path],
@@ -294,9 +295,14 @@ class NemoSTT(STTInterface):
                         prompt=prompt
                     )
                 else:
-                    # Auto-detect language
-                    logger.info("Using auto language detection")
-                    hypotheses = self.model.transcribe([audio_path], batch_size=1)
+                    # Auto-detect language - use English as default with punctuation
+                    prompt = "<|en|><|transcribe|><|pc|>"
+                    logger.info(f"Using auto language detection with prompt: {prompt}")
+                    hypotheses = self.model.transcribe(
+                        [audio_path],
+                        batch_size=1,
+                        prompt=prompt
+                    )
 
                 if hypotheses and len(hypotheses) > 0:
                     transcription = hypotheses[0].text if hasattr(hypotheses[0], 'text') else str(hypotheses[0])
