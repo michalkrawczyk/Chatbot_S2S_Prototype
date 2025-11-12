@@ -195,14 +195,14 @@ class WhisperSTT(STTInterface):
 
 
 class NemoSTT(STTInterface):
-    """NVIDIA Nemo implementation of STT"""
+    """NVIDIA Canary implementation of STT"""
 
-    def __init__(self, model_name="nvidia/parakeet-tdt-1.1b", target_sample_rate=16000):
+    def __init__(self, model_name="nvidia/canary-1b", target_sample_rate=16000):
         """
-        Initialize NemoSTT with specified model
+        Initialize CanarySTT with Canary model
 
         Args:
-            model_name (str): Name of the Nemo model to use
+            model_name (str): Name of the Canary model to use (default: nvidia/canary-1b)
             target_sample_rate (int): Target sample rate for audio processing (default: 16000 Hz)
         """
         self.model_name = model_name
@@ -214,11 +214,11 @@ class NemoSTT(STTInterface):
         self._initialize_model()
 
     def _initialize_model(self):
-        """Initialize the Nemo model using nemo_toolkit"""
+        """Initialize the Canary model using nemo_toolkit"""
         try:
             import nemo.collections.asr as nemo_asr
 
-            logger.info(f"Loading Nemo model: {self.model_name}")
+            logger.info(f"Loading Canary model: {self.model_name}")
             start_time = time.time()
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -239,21 +239,21 @@ class NemoSTT(STTInterface):
             self.processor = None
 
             load_time = time.time() - start_time
-            logger.info(f"NemoSTT initialized successfully: {self.model_name} (loaded in {load_time:.2f}s)")
+            logger.info(f"Canary STT initialized successfully: {self.model_name} (loaded in {load_time:.2f}s)")
 
         except ImportError as e:
             logger.error(f"Error importing nemo_toolkit: {str(e)}")
-            logger.error("To use NVIDIA Nemo models, install: pip install nemo_toolkit[asr]")
+            logger.error("To use NVIDIA Canary model, install: pip install nemo_toolkit[asr]")
             self.model = None
             self.processor = None
         except Exception as e:
-            logger.error(f"Error initializing Nemo model: {str(e)}")
+            logger.error(f"Error initializing Canary model: {str(e)}")
             self.model = None
             self.processor = None
 
     def transcribe_audio(self, audio_path, language="auto", max_retries=3):
         """
-        Transcribe audio using NVIDIA Nemo
+        Transcribe audio using NVIDIA Canary model
 
         Args:
             audio_path (str): Path to the audio file
@@ -267,28 +267,43 @@ class NemoSTT(STTInterface):
             return "Service temporarily unavailable due to repeated failures. Please try again later."
 
         if not self.model:
-            return "Nemo model not initialized. Please install nemo_toolkit[asr]."
+            return "Canary model not initialized. Please install nemo_toolkit[asr]."
 
         is_valid, error_msg = validate_audio_file(audio_path)
         if not is_valid:
             return error_msg
 
         if language and language != "auto" and not self.validate_language(language):
-            logger.warning(f"Language '{language}' may not be fully supported by this Nemo model. Proceeding anyway.")
+            return f"Unsupported language: {language}. Please select from the supported options."
 
         retries = 0
         while retries < max_retries:
             try:
-                logger.info(f"Transcribing with Nemo: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
+                logger.info(f"Transcribing with Canary: {audio_path}, language: {language}, attempt: {retries + 1}/{max_retries}")
 
-                hypotheses = self.model.transcribe([audio_path])
+                # Prepare Canary prompt for language-specific transcription
+                if language and language != "auto":
+                    # Convert "eng" to "en", keep others as-is
+                    lang_code = "en" if language == "eng" else language
+                    # Canary prompt format: "<|source_lang|><|transcribe|>"
+                    prompt = f"<|{lang_code}|><|transcribe|>"
+                    logger.info(f"Using Canary prompt: {prompt}")
+                    hypotheses = self.model.transcribe(
+                        [audio_path],
+                        batch_size=1,
+                        prompt=prompt
+                    )
+                else:
+                    # Auto-detect language
+                    logger.info("Using auto language detection")
+                    hypotheses = self.model.transcribe([audio_path], batch_size=1)
 
                 if hypotheses and len(hypotheses) > 0:
                     transcription = hypotheses[0].text if hasattr(hypotheses[0], 'text') else str(hypotheses[0])
                 else:
                     transcription = ""
 
-                logger.info(f"Nemo transcription successful: {len(transcription)} characters")
+                logger.info(f"Canary transcription successful: {len(transcription)} characters")
                 self.circuit_breaker.record_success()
                 return transcription
 
@@ -299,10 +314,10 @@ class NemoSTT(STTInterface):
             except RuntimeError as e:
                 retries += 1
                 error_msg = str(e)
-                logger.warning(f"Nemo transcription attempt {retries} failed (retryable): {error_msg}")
+                logger.warning(f"Canary transcription attempt {retries} failed (retryable): {error_msg}")
 
                 if retries >= max_retries:
-                    logger.error(f"Nemo transcription failed after {max_retries} attempts: {error_msg}")
+                    logger.error(f"Canary transcription failed after {max_retries} attempts: {error_msg}")
                     self.circuit_breaker.record_failure()
                     return f"Transcription error: {error_msg}"
 
@@ -311,13 +326,13 @@ class NemoSTT(STTInterface):
                 time.sleep(wait_time)
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"Nemo transcription failed: {error_msg}")
+                logger.error(f"Canary transcription failed: {error_msg}")
                 self.circuit_breaker.record_failure()
                 return f"Transcription error: {error_msg}"
 
     def is_available(self):
         """
-        Check if Nemo service is available
+        Check if Canary service is available
 
         Returns:
             bool: True if model is loaded successfully
@@ -326,16 +341,20 @@ class NemoSTT(STTInterface):
 
     def validate_language(self, language):
         """
-        Validate if the language is supported by Nemo
+        Validate if the language is supported by Canary
 
         Args:
             language (str): Language code to validate
 
         Returns:
-            bool: True if language is likely supported
+            bool: True if language is supported by Canary
         """
-        nemo_supported_languages = ["auto", "eng", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ar"]
-        return validate_language(language, nemo_supported_languages)
+        # Canary-1b supported languages
+        canary_supported_languages = [
+            "auto", "eng", "es", "fr", "de", "it", "pt", "nl",
+            "ru", "zh", "ja", "ar", "hi", "ko", "pl"
+        ]
+        return validate_language(language, canary_supported_languages)
 
 
 class STTFactory:
@@ -347,7 +366,7 @@ class STTFactory:
         Create an STT instance based on model type
 
         Args:
-            model_type (str): Type of STT model ("whisper" or "nemo")
+            model_type (str): Type of STT model ("whisper" or "canary")
             **kwargs: Additional arguments for STT initialization
 
         Returns:
@@ -358,9 +377,9 @@ class STTFactory:
             if not openai_client:
                 raise ValueError("openai_client is required for WhisperSTT")
             return WhisperSTT(openai_client)
-        elif model_type.lower() == "nemo":
-            model_name = kwargs.get("model_name", "nvidia/parakeet-tdt-1.1b")
+        elif model_type.lower() in ["nemo", "canary"]:
+            model_name = kwargs.get("model_name", "nvidia/canary-1b")
             target_sample_rate = kwargs.get("target_sample_rate", 16000)
             return NemoSTT(model_name, target_sample_rate)
         else:
-            raise ValueError(f"Unsupported STT model type: {model_type}")
+            raise ValueError(f"Unsupported STT model type: {model_type}. Supported: 'whisper', 'canary'")
