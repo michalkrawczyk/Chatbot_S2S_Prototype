@@ -38,6 +38,15 @@ A Speech-to-Speech chatbot prototype with multiple Speech-to-Text (STT) backend 
 - Can run on CPU or GPU
 - Privacy-focused (audio stays on your device)
 
+#### Installing NVIDIA Nemo Support
+To use NVIDIA Nemo models (like `nvidia/parakeet-tdt-1.1b`), you need to install the `nemo_toolkit`:
+
+```bash
+pip install nemo_toolkit[asr]
+```
+
+**Note**: The `nemo_toolkit[asr]` package is required to use NVIDIA Nemo models.
+
 ## Configuration
 
 You can configure the default STT model in `general/config.py`:
@@ -52,6 +61,7 @@ Or switch models dynamically through the UI using the "Speech-to-Text Model" dro
 
 1. **Connect to OpenAI**: Enter your OpenAI API key (required for Whisper STT and AI analysis)
 2. **Select STT Model**: Choose between Whisper or Nemo for transcription
+   - For Nemo: Make sure you have installed `nemo_toolkit[asr]` first
 3. **Record or Upload Audio**: Use the microphone or upload an audio file
 4. **Transcribe & Analyze**: Get your transcription and AI-powered analysis
 5. **Listen to Results**: Use Text-to-Speech to hear the analysis
