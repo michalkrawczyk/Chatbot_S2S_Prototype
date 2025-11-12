@@ -194,11 +194,7 @@ class WhisperSTT(STTInterface):
         return validate_language(language, SUPPORT_LANGUAGES)
 
 
-<<<<<<< HEAD
 class NemoSTT(STTInterface):
-=======
-class CanarySTT(STTInterface):
->>>>>>> origin/main
     """NVIDIA Canary implementation of STT"""
 
     def __init__(self, model_name="nvidia/canary-1b", target_sample_rate=16000):
