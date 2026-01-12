@@ -473,7 +473,7 @@ class SpacesTranscriber:
             self.agent_memory = self.agent_memory[-max_memory_items:]
 
     # UPDATED METHOD for Generate Speech with Streaming Support
-    def generate_speech_from_text(self, text, voice="alloy", stream=True):
+    def generate_speech_from_text(self, text, voice="alloy", stream=True, audio_enabled=True):
         """
         Generate speech from text using OpenAI's TTS API with streaming support
 
@@ -481,10 +481,14 @@ class SpacesTranscriber:
             text (str): Text to convert to speech
             voice (str): Voice to use
             stream (bool): Whether to use streaming mode
+            audio_enabled (bool): Whether audio output is enabled
 
         Returns:
             tuple: (audio_data or path or dict, status message)
         """
+        if not audio_enabled:
+            return None, "Audio output is disabled"
+        
         if not text:
             return None, "No text provided for speech synthesis"
 
@@ -600,6 +604,13 @@ def create_interface():
                     value="alloy",
                     label="TTS Voice",
                     info="Select voice for text-to-speech",
+                )
+
+                # Enable audio output option
+                enable_audio_output = gr.Checkbox(
+                    label="Enable Audio Output",
+                    value=True,
+                    info="Enable or disable all audio output (TTS)",
                 )
 
                 # Auto-speak option
@@ -1077,10 +1088,12 @@ def create_interface():
             try:
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
+                audio_enabled_value = enable_audio_output.value
             except:
                 logger.warning("Failed to get TTS settings, using defaults")
                 auto_speak_value = False
                 voice_value = "alloy"
+                audio_enabled_value = True
 
             # Call transcriber
             try:
@@ -1117,7 +1130,7 @@ def create_interface():
                         if auto_speak_value:
                             tts_audio_path, tts_status = (
                                 transcriber.generate_speech_from_text(
-                                    analysis_result, voice_value, stream=False
+                                    analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                                 )
                             )
                             if tts_audio_path:
@@ -1177,10 +1190,12 @@ def create_interface():
             try:
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
+                audio_enabled_value = enable_audio_output.value
             except:
                 logger.warning("Failed to get TTS settings, using defaults")
                 auto_speak_value = False
                 voice_value = "alloy"
+                audio_enabled_value = True
 
             try:
                 # Process the uploaded file
@@ -1221,7 +1236,7 @@ def create_interface():
                     if auto_speak_value:
                         tts_audio_path, tts_status = (
                             transcriber.generate_speech_from_text(
-                                analysis_result, voice_value, stream=False
+                                analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                             )
                         )
                         if not tts_audio_path:
@@ -1263,10 +1278,12 @@ def create_interface():
             try:
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
+                audio_enabled_value = enable_audio_output.value
             except:
                 logger.warning("Failed to get TTS settings, using defaults")
                 auto_speak_value = False
                 voice_value = "alloy"
+                audio_enabled_value = True
 
             try:
                 # Analyze text (no source file)
@@ -1281,7 +1298,7 @@ def create_interface():
                 tts_audio_path = None
                 if auto_speak_value:
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
-                        analysis_result, voice_value, stream=False
+                        analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                     )
                     if not tts_audio_path:
                         return (
@@ -1317,10 +1334,12 @@ def create_interface():
             try:
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
+                audio_enabled_value = enable_audio_output.value
             except:
                 logger.warning("Failed to get TTS settings, using defaults")
                 auto_speak_value = False
                 voice_value = "alloy"
+                audio_enabled_value = True
 
             try:
                 analysis_result, thinking_process = transcriber.analyze_transcription(
@@ -1334,7 +1353,7 @@ def create_interface():
                 tts_audio_path = None
                 if auto_speak_value:
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
-                        analysis_result, voice_value, stream=False
+                        analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                     )
                     if not tts_audio_path:
                         return (
@@ -1361,13 +1380,13 @@ def create_interface():
         ).then(fn=lambda: update_memory_display(), inputs=[], outputs=[memory_display])
 
         # Regular speech (non-streaming) for analysis
-        def speak_analysis(analysis_text, voice):
+        def speak_analysis(analysis_text, voice, audio_enabled):
             if not analysis_text:
                 return "No analysis to speak", None
 
             try:
                 audio_path, status = transcriber.generate_speech_from_text(
-                    analysis_text, voice, stream=False
+                    analysis_text, voice, stream=False, audio_enabled=audio_enabled
                 )
                 return status, audio_path
             except Exception as e:
@@ -1376,19 +1395,19 @@ def create_interface():
 
         speak_analysis_btn.click(
             fn=speak_analysis,
-            inputs=[analysis_output, voice_selector],
+            inputs=[analysis_output, voice_selector, enable_audio_output],
             outputs=[status_msg, tts_audio],
         )
 
         # IMPROVED: Streaming speech for analysis with Progressive Audio Player
-        def stream_analysis(analysis_text, voice):
+        def stream_analysis(analysis_text, voice, audio_enabled):
             if not analysis_text:
                 return "No analysis to stream", None
 
             try:
                 # Get streaming response
                 stream_result, status = transcriber.generate_speech_from_text(
-                    analysis_text, voice, stream=True
+                    analysis_text, voice, stream=True, audio_enabled=audio_enabled
                 )
                 return status, stream_result
             except Exception as e:
@@ -1397,7 +1416,7 @@ def create_interface():
 
         stream_analysis_btn.click(
             fn=stream_analysis,
-            inputs=[analysis_output, voice_selector],
+            inputs=[analysis_output, voice_selector, enable_audio_output],
             outputs=[status_msg, streaming_audio],
             js="""
             async function(status, stream) {
@@ -1418,7 +1437,7 @@ def create_interface():
         )
 
         # IMPROVED: Analyze and Stream in one step with Progressive Audio Player
-        def analyze_and_stream(transcription, voice):
+        def analyze_and_stream(transcription, voice, audio_enabled):
             if not transcription:
                 return "No transcription to analyze", "", "", None
 
@@ -1433,7 +1452,7 @@ def create_interface():
 
                 # Then stream the result
                 stream_result, status = transcriber.generate_speech_from_text(
-                    analysis_result, voice, stream=True
+                    analysis_result, voice, stream=True, audio_enabled=audio_enabled
                 )
 
                 return (
@@ -1449,7 +1468,7 @@ def create_interface():
         # Connect the analyze and stream button with improved JavaScript
         analyze_and_stream_btn.click(
             fn=analyze_and_stream,
-            inputs=[transcription_output, voice_selector],
+            inputs=[transcription_output, voice_selector, enable_audio_output],
             outputs=[status_msg, analysis_output, thinking_display, streaming_audio],
             js="""
             async function(status, analysis, thinking, stream) {
