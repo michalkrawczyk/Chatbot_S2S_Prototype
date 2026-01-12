@@ -1100,9 +1100,9 @@ def create_interface():
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
             except AttributeError:
-                logger.warning("Failed to get TTS settings, using defaults")
-            except:
-                logger.warning("Failed to get TTS settings, using defaults")
+                logger.warning("Failed to get TTS settings (AttributeError), using defaults")
+            except Exception as e:
+                logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
             # Call transcriber
             try:
