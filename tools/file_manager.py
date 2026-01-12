@@ -8,7 +8,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from general.config import DATA_FILES_DIR, FILE_MEMORY_DIR, SUPPORTED_FILETYPES
-from general.logs import conditional_logger_info
+from general.logs import conditional_logger_info, logger
 from tools.datasheet_manager import DATASHEET_MANAGER
 from tools.tool_prompts_texts import file_summary_prompt
 
@@ -123,7 +123,7 @@ class FileSystemManager:
                     summary_prompt = file_summary_prompt(file_type, content)
 
                     # Generate summary using the LLM
-                    from langchain.schema import HumanMessage
+                    from langchain_core.messages import HumanMessage
 
                     messages = [HumanMessage(content=summary_prompt)]
                     response = llm_summarizer.invoke(messages)
@@ -410,20 +410,22 @@ class FileSystemManager:
         if not description and llm_summarizer:
             try:
                 content = self.read_file(abs_path)
-                if content and not content.startswith("Error"):
+                # Check if read was successful (content doesn't start with error message)
+                if content and not (content.startswith("Error") or content.startswith("[Binary file:")):
                     # Determine file type
                     file_ext = os.path.splitext(abs_path)[1].lower()
                     file_type = file_ext.lstrip(".") if file_ext else "text"
                     
                     # Generate summary
                     summary_prompt = file_summary_prompt(file_type, content)
-                    from langchain.schema import HumanMessage
+                    from langchain_core.messages import HumanMessage
                     messages = [HumanMessage(content=summary_prompt)]
                     response = llm_summarizer.invoke(messages)
                     description = response.content
                 else:
                     description = "No description available"
             except Exception as e:
+                logger.error(f"Error generating description: {str(e)}")
                 description = f"Error generating description: {str(e)}"
         elif not description:
             description = "No description available"
