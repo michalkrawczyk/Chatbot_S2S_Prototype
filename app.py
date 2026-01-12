@@ -1099,8 +1099,8 @@ def create_interface():
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except AttributeError:
-                logger.warning("Failed to get TTS settings (AttributeError), using defaults")
+            except AttributeError as e:
+                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
             except Exception as e:
                 logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
@@ -1203,8 +1203,8 @@ def create_interface():
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except AttributeError:
-                logger.warning("Failed to get TTS settings (AttributeError), using defaults")
+            except AttributeError as e:
+                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
             except Exception as e:
                 logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
@@ -1293,8 +1293,8 @@ def create_interface():
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except AttributeError:
-                logger.warning("Failed to get TTS settings (AttributeError), using defaults")
+            except AttributeError as e:
+                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
             except Exception as e:
                 logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
@@ -1351,8 +1351,8 @@ def create_interface():
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except AttributeError:
-                logger.warning("Failed to get TTS settings (AttributeError), using defaults")
+            except AttributeError as e:
+                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
             except Exception as e:
                 logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
