@@ -16,24 +16,28 @@ from tools.tool_prompts_texts import file_summary_prompt
 class FileInfo(BaseModel):
     """Model for file information stored in the index."""
 
-    path: str
+    file: str  # Filename only
+    path: str  # Full absolute path
     description: str = ""
     origin: Optional[str] = None
     last_updated: Optional[str] = None
 
 
 class FileSystemManager:
-    """Class to manage file system operations."""
+    """Class to manage file system operations with a global file helper catalog."""
 
     _file_index = {}
+    _global_helper_index = {}  # Global catalog for all accessed files
 
     def __init__(
         self,
         memory_dir: str = FILE_MEMORY_DIR,
         memory_index_filename: str = "index.json",
+        global_helper_filename: str = "global_file_helper.json",
     ):
         self.memory_dir = memory_dir
         self.memory_index_path = os.path.join(DATA_FILES_DIR, memory_index_filename)
+        self.global_helper_path = os.path.join(DATA_FILES_DIR, global_helper_filename)
 
         # Ensure the memory directory exists
         Path(self.memory_dir).mkdir(parents=True, exist_ok=True)
@@ -41,6 +45,7 @@ class FileSystemManager:
 
         # Initialize or load the file index
         self._initialize_index()
+        self._initialize_global_helper()
 
     def _initialize_index(self):
         """Initialize or load the file index."""
@@ -50,10 +55,30 @@ class FileSystemManager:
         else:
             self._save_index()
 
+    def _initialize_global_helper(self):
+        """Initialize or load the global file helper."""
+        if os.path.exists(self.global_helper_path):
+            with open(self.global_helper_path, "r") as f:
+                data = json.load(f)
+                # Convert from list format to dict format for easier lookup
+                if isinstance(data, list):
+                    self._global_helper_index = {item["path"]: item for item in data}
+                else:
+                    self._global_helper_index = data
+        else:
+            self._save_global_helper()
+
     def _save_index(self):
         """Save the current file index to disk."""
         with open(self.memory_index_path, "w") as f:
             json.dump(self._file_index, f, indent=2)
+
+    def _save_global_helper(self):
+        """Save the global helper index to disk as a JSON array."""
+        # Convert dict to list format for output
+        helper_list = list(self._global_helper_index.values())
+        with open(self.global_helper_path, "w") as f:
+            json.dump(helper_list, f, indent=2)
 
     def list_files(self) -> List[str]:
         """List all files in the memory directory."""
@@ -110,6 +135,12 @@ class FileSystemManager:
                         "origin": "undefined",  # TODO
                         "last_updated": self._get_timestamp(),
                     }
+                    # Also add to global helper
+                    self._update_global_helper_entry(
+                        file_path=file_path,
+                        description=description,
+                        origin="file_scan",
+                    )
                 else:
                     # If content is empty, just add a placeholder
                     self._file_index[rel_path] = {
@@ -118,6 +149,12 @@ class FileSystemManager:
                         "origin": "undefined",  # TODO
                         "last_updated": self._get_timestamp(),
                     }
+                    # Also add to global helper
+                    self._update_global_helper_entry(
+                        file_path=file_path,
+                        description="No description available",
+                        origin="file_scan",
+                    )
 
         # Remove entries for files that no longer exist
         existing_rel_paths = [
@@ -308,3 +345,127 @@ class FileSystemManager:
         from datetime import datetime
 
         return datetime.now().isoformat()
+
+    def _update_global_helper_entry(
+        self,
+        file_path: str,
+        description: str = "",
+        origin: str = "user_defined",
+        update_existing: bool = True,
+    ):
+        """Update or add an entry to the global helper catalog.
+        
+        Args:
+            file_path: Full absolute path to the file
+            description: Description of the file's purpose and content
+            origin: Origin of the file information
+            update_existing: Whether to update existing entries
+        """
+        # Normalize path to absolute
+        abs_path = os.path.abspath(file_path)
+        filename = os.path.basename(abs_path)
+        
+        # Check if entry exists
+        if abs_path in self._global_helper_index:
+            if update_existing:
+                self._global_helper_index[abs_path]["description"] = description
+                self._global_helper_index[abs_path]["origin"] = origin
+                self._global_helper_index[abs_path]["last_updated"] = self._get_timestamp()
+        else:
+            # Create new entry
+            self._global_helper_index[abs_path] = {
+                "file": filename,
+                "path": abs_path,
+                "description": description,
+                "origin": origin,
+                "last_updated": self._get_timestamp(),
+            }
+        
+        self._save_global_helper()
+
+    def add_file_to_global_helper(
+        self,
+        file_path: str,
+        description: str = "",
+        origin: str = "user_upload",
+        llm_summarizer: Optional[BaseChatModel] = None,
+    ):
+        """Add a file to the global helper catalog with optional async description generation.
+        
+        Args:
+            file_path: Full path to the file
+            description: Optional pre-defined description
+            origin: Origin of the file
+            llm_summarizer: Optional LLM to generate description if not provided
+            
+        Returns:
+            self for method chaining
+        """
+        abs_path = os.path.abspath(file_path)
+        
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(f"File {abs_path} does not exist")
+        
+        # If no description provided and LLM is available, generate one
+        if not description and llm_summarizer:
+            try:
+                content = self.read_file(abs_path)
+                if content and not content.startswith("Error"):
+                    # Determine file type
+                    file_ext = os.path.splitext(abs_path)[1].lower()
+                    file_type = file_ext.lstrip(".") if file_ext else "text"
+                    
+                    # Generate summary
+                    summary_prompt = file_summary_prompt(file_type, content)
+                    from langchain.schema import HumanMessage
+                    messages = [HumanMessage(content=summary_prompt)]
+                    response = llm_summarizer.invoke(messages)
+                    description = response.content
+                else:
+                    description = "No description available"
+            except Exception as e:
+                description = f"Error generating description: {str(e)}"
+        elif not description:
+            description = "No description available"
+        
+        # Update the global helper
+        self._update_global_helper_entry(
+            file_path=abs_path,
+            description=description,
+            origin=origin,
+        )
+        
+        return self
+
+    def get_global_helper_as_context(self) -> str:
+        """Get the global file helper as a formatted string for agent context.
+        
+        Returns:
+            Formatted string representation of the global helper
+        """
+        if not self._global_helper_index:
+            return "No files in global helper catalog."
+        
+        context = "### Global File Helper Catalog:\n\n"
+        for file_info in self._global_helper_index.values():
+            context += f"**{file_info['file']}**\n"
+            context += f"  - Path: {file_info['path']}\n"
+            context += f"  - Description: {file_info['description']}\n\n"
+        
+        return context
+
+    def get_file_description_from_helper(self, file_path: str) -> Optional[str]:
+        """Get a file's description from the global helper.
+        
+        Args:
+            file_path: Path to the file (can be relative or absolute)
+            
+        Returns:
+            Description string if found, None otherwise
+        """
+        abs_path = os.path.abspath(file_path)
+        
+        if abs_path in self._global_helper_index:
+            return self._global_helper_index[abs_path].get("description", None)
+        
+        return None

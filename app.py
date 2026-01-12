@@ -23,6 +23,7 @@ from openai_client import OpenAIClient
 from audio.stt_utils import SUPPORT_LANGUAGES
 from audio.transcription_service import TranscriptionService
 from tools import GOOGLE_API_CLIENT
+from tools.tool_register import FILESYSTEM_MANAGER
 
 # Get OpenAI API key from environment variable (for Spaces secrets)
 DEFAULT_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -1544,6 +1545,18 @@ def create_interface():
                             last_file = (
                                 filepath  # Keep track of the last file for context
                             )
+                            
+                            # Add to global helper catalog
+                            try:
+                                llm = AGENT.get_llm if AGENT.get_llm else None
+                                FILESYSTEM_MANAGER.add_file_to_global_helper(
+                                    file_path=filepath,
+                                    origin="google_drive",
+                                    llm_summarizer=llm,
+                                )
+                                conditional_logger_info(f"Added {filename} to global helper")
+                            except Exception as e:
+                                logger.warning(f"Failed to add {filename} to global helper: {e}")
 
                         logger.info(
                             f"Successfully downloaded files from Google: {', '.join(saved_files)}"
@@ -1573,6 +1586,18 @@ def create_interface():
                         shutil.copy(file_obj.name, dest_path)
                         saved_files.append(filename)
                         last_file = str(dest_path)
+                        
+                        # Add to global helper catalog
+                        try:
+                            llm = AGENT.get_llm if AGENT.get_llm else None
+                            FILESYSTEM_MANAGER.add_file_to_global_helper(
+                                file_path=str(dest_path),
+                                origin="user_upload",
+                                llm_summarizer=llm,
+                            )
+                            conditional_logger_info(f"Added {filename} to global helper")
+                        except Exception as e:
+                            logger.warning(f"Failed to add {filename} to global helper: {e}")
                     except Exception as e:
                         logger.error(
                             f"Error saving file {file_obj.name if file_obj else 'None'}: {e}"
