@@ -1085,15 +1085,15 @@ def create_interface():
                 language_value = "auto"
 
             # Get TTS settings
+            auto_speak_value = False
+            voice_value = "alloy"
+            audio_enabled_value = True
             try:
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except:
+            except AttributeError:
                 logger.warning("Failed to get TTS settings, using defaults")
-                auto_speak_value = False
-                voice_value = "alloy"
-                audio_enabled_value = True
 
             # Call transcriber
             try:
