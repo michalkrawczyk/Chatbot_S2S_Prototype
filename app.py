@@ -487,8 +487,15 @@ class SpacesTranscriber:
             tuple: (audio_data or path or dict, status message)
         """
         if not audio_enabled:
+            # For streaming mode, return a dict with a 'streaming' key to satisfy callers
+            if stream:
+                return {
+                    "audio": None,
+                    "streaming": False,
+                    "autoplay": False,
+                }, "Audio output is disabled"
+            # For non-streaming mode, preserve existing behavior
             return None, "Audio output is disabled"
-        
         if not text:
             return None, "No text provided for speech synthesis"
 
