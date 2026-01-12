@@ -37,7 +37,11 @@ class GoogleClient:
         os.makedirs(self.memory_dir, exist_ok=True)
 
         if not service_key_json:
-            raise ValueError(f"Environment variable {env_var_name} not set")
+            logger.warning(f"Environment variable {env_var_name} not set. Google API features will be disabled.")
+            self.credentials = None
+            self.drive_service = None
+            self.sheets_service = None
+            return
 
         try:
             self.service_key_dict = json.loads(service_key_json)
