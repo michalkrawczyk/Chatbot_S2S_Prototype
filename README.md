@@ -20,7 +20,8 @@ A Speech-to-Speech chatbot prototype with multiple Speech-to-Text (STT) backend 
 - **Voice Recording**: Record audio directly from your microphone
 - **Audio Upload**: Upload audio files in various formats (WAV, MP3, M4A, FLAC)
 - **AI Analysis**: Analyze transcribed text using advanced AI models
-- **Text-to-Speech**: Convert analysis results to speech
+- **Text-to-Speech**: Convert analysis results to speech with optional enable/disable control
+- **Audio Output Control**: Enable or disable all audio output via a convenient checkbox
 - **Multi-language Support**: Automatic language detection or manual selection
 - **Session Memory**: Track conversation history and context
 
@@ -62,8 +63,11 @@ Or switch models dynamically through the UI using the "Speech-to-Text Model" dro
 1. **Connect to OpenAI**: Enter your OpenAI API key (required for Whisper STT and AI analysis)
 2. **Select STT Model**: Choose between Whisper or Nemo for transcription
    - For Nemo: Make sure you have installed `nemo_toolkit[asr]` first
-3. **Record or Upload Audio**: Use the microphone or upload an audio file
-4. **Transcribe & Analyze**: Get your transcription and AI-powered analysis
-5. **Listen to Results**: Use Text-to-Speech to hear the analysis
+3. **Configure Audio Output**: Use the "Enable Audio Output" checkbox to control TTS playback
+   - When enabled: Text-to-speech will work normally
+   - When disabled: All audio output (TTS) will be muted
+4. **Record or Upload Audio**: Use the microphone or upload an audio file
+5. **Transcribe & Analyze**: Get your transcription and AI-powered analysis
+6. **Listen to Results**: Use Text-to-Speech to hear the analysis (if audio output is enabled)
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
