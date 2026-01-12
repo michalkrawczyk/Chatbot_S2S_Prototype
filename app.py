@@ -1287,8 +1287,9 @@ def create_interface():
                 auto_speak_value = auto_speak.value
                 voice_value = voice_selector.value
                 audio_enabled_value = enable_audio_output.value
-            except:
-                logger.warning("Failed to get TTS settings, using defaults")
+            except Exception as e:
+                logger.warning("Failed to get TTS settings, using defaults", exc_info=e)
+                conditional_logger_info(traceback.format_exc())
                 auto_speak_value = False
                 voice_value = "alloy"
                 audio_enabled_value = True
