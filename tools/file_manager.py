@@ -26,10 +26,12 @@ class FileInfo(BaseModel):
 class FileSystemManager:
     """Class to manage file system operations with a global file helper catalog."""
 
-    _file_index = {}
-    _global_helper_index = {}  # Global catalog for all accessed files
-
     def __init__(
+        self,
+        memory_dir: str = FILE_MEMORY_DIR,
+        memory_index_filename: str = "index.json",
+        global_helper_filename: str = "global_file_helper.json",
+    ):
         self,
         memory_dir: str = FILE_MEMORY_DIR,
         memory_index_filename: str = "index.json",
@@ -39,6 +41,9 @@ class FileSystemManager:
         self.memory_index_path = os.path.join(DATA_FILES_DIR, memory_index_filename)
         self.global_helper_path = os.path.join(DATA_FILES_DIR, global_helper_filename)
 
+        # Per-instance indexes
+        self._file_index = {}
+        self._global_helper_index = {}
         # Ensure the memory directory exists
         Path(self.memory_dir).mkdir(parents=True, exist_ok=True)
         Path(DATA_FILES_DIR).mkdir(parents=True, exist_ok=True)
