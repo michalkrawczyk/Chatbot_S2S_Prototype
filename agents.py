@@ -50,6 +50,7 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
         messages = [SystemMessage(content=system_prompt)]
         
         # Always include the global file helper catalog in the agent's context
+        # Note: If the catalog grows large, this could increase token usage significantly
         global_helper_context = FILESYSTEM_MANAGER.get_global_helper_as_context()
         if global_helper_context and global_helper_context != "No files in global helper catalog.":
             helper_message = HumanMessage(

@@ -547,7 +547,7 @@ transcriber = SpacesTranscriber(DEFAULT_API_KEY)
 def get_agent_llm():
     """Helper function to get the LLM instance from the agent."""
     try:
-        return AGENT.get_llm if AGENT.get_llm else None
+        return AGENT.get_llm
     except Exception:
         return None
 

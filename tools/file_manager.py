@@ -32,11 +32,6 @@ class FileSystemManager:
         memory_index_filename: str = "index.json",
         global_helper_filename: str = "global_file_helper.json",
     ):
-        self,
-        memory_dir: str = FILE_MEMORY_DIR,
-        memory_index_filename: str = "index.json",
-        global_helper_filename: str = "global_file_helper.json",
-    ):
         self.memory_dir = memory_dir
         self.memory_index_path = os.path.join(DATA_FILES_DIR, memory_index_filename)
         self.global_helper_path = os.path.join(DATA_FILES_DIR, global_helper_filename)
@@ -417,7 +412,10 @@ class FileSystemManager:
         origin: str = "user_upload",
         llm_summarizer: Optional[BaseChatModel] = None,
     ):
-        """Add a file to the global helper catalog with optional async description generation.
+        """Add a file to the global helper catalog with optional LLM-generated description.
+        
+        This method runs synchronously: if no description is provided and an LLM
+        summarizer is supplied, it will block while generating the description.
         
         Args:
             file_path: Full path to the file

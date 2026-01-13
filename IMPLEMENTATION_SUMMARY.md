@@ -14,7 +14,7 @@ Successfully implemented a global file helper catalog system that tracks all acc
 
 2. **LLM Description Generation**
    - Automatic description generation for uploaded files
-   - Asynchronous operation (non-blocking)
+   - Synchronous operation with graceful error handling
    - Graceful fallback when LLM unavailable
    - Uses existing `file_summary_prompt` template
 
