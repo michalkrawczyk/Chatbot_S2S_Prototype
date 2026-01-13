@@ -16,7 +16,7 @@ from tools.tool_prompts_texts import file_summary_prompt
 class FileInfo(BaseModel):
     """Model for file information stored in the index."""
 
-    file: str  # Filename only
+    file: Optional[str] = None  # Filename only (optional for backward compatibility)
     path: str  # Full absolute path
     description: str = ""
     origin: Optional[str] = None
@@ -74,7 +74,17 @@ class FileSystemManager:
 
             # Convert from list format to dict format for easier lookup
             if isinstance(data, list):
-                self._global_helper_index = {item["path"]: item for item in data}
+                helper_index = {}
+                for item in data:
+                    # Validate each entry before using the "path" key
+                    if isinstance(item, dict) and "path" in item:
+                        helper_index[item["path"]] = item
+                    else:
+                        logger.warning(
+                            "Skipping invalid global helper entry without 'path': %s",
+                            item,
+                        )
+                self._global_helper_index = helper_index
             else:
                 self._global_helper_index = data
         else:
@@ -422,8 +432,8 @@ class FileSystemManager:
         if not description and llm_summarizer:
             try:
                 content = self.read_file(abs_path)
-                # Check if read was successful (content doesn't start with error message)
-                if content and not (content.startswith("Error") or content.startswith("[Binary file:")):
+                # If we have any content, attempt to generate a summary
+                if content:
                     # Determine file type
                     file_ext = os.path.splitext(abs_path)[1].lower()
                     file_type = file_ext.lstrip(".") if file_ext else "text"

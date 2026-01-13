@@ -344,12 +344,16 @@ class AgentLLM:
         """
         # TODO: Add awerness of length of context (maximum token size)
         
-        # If context is a file path, try to get its description from global helper
-        if context_type == "file info" and os.path.isfile(context):
+        # If context type is "file info", check global helper first (even if file doesn't exist)
+        if context_type == "file info":
+            # Try to get description from global helper regardless of file existence
             file_description = FILESYSTEM_MANAGER.get_file_description_from_helper(context)
             if file_description:
                 # Include the helper description in the context
+                file_exists = os.path.isfile(context)
                 enhanced_context = f"File: {os.path.basename(context)}\nPath: {context}\nDescription: {file_description}"
+                if not file_exists:
+                    enhanced_context += "\n(Note: File may have been moved or deleted)"
                 logger.info(f"Setting context with helper description for: {context}")
                 self._context = (enhanced_context, context_type)
             else:
