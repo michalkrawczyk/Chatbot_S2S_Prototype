@@ -342,7 +342,7 @@ class AgentLLM:
             context: Context string or file path
             context_type: Type of context being set
         """
-        # TODO: Add awerness of length of context (maximum token size)
+        # TODO: Add awareness of length of context (maximum token size)
         
         # If context type is "file info", check global helper first (even if file doesn't exist)
         if context_type == "file info":
