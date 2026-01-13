@@ -58,13 +58,25 @@ class FileSystemManager:
     def _initialize_global_helper(self):
         """Initialize or load the global file helper."""
         if os.path.exists(self.global_helper_path):
-            with open(self.global_helper_path, "r") as f:
-                data = json.load(f)
-                # Convert from list format to dict format for easier lookup
-                if isinstance(data, list):
-                    self._global_helper_index = {item["path"]: item for item in data}
-                else:
-                    self._global_helper_index = data
+            try:
+                with open(self.global_helper_path, "r") as f:
+                    data = json.load(f)
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.error(
+                    "Failed to load global helper file '%s': %s. "
+                    "Reinitializing with an empty catalog.",
+                    self.global_helper_path,
+                    exc,
+                )
+                self._global_helper_index = {}
+                self._save_global_helper()
+                return
+
+            # Convert from list format to dict format for easier lookup
+            if isinstance(data, list):
+                self._global_helper_index = {item["path"]: item for item in data}
+            else:
+                self._global_helper_index = data
         else:
             self._save_global_helper()
 
