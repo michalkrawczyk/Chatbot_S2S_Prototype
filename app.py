@@ -1057,7 +1057,7 @@ def create_interface():
         )
 
         # Process recording with auto transcription and analysis
-        def handle_recording_with_analysis(audio_data):
+        def handle_recording_with_analysis(audio_data, auto_analyze_value, api_key_value, language_value, auto_speak_value, voice_value, audio_enabled_value):
             # Validate audio data format
             if (
                 audio_data is None
@@ -1073,39 +1073,9 @@ def create_interface():
                 f"Recording received: {len(audio_array)} samples at {sample_rate}Hz"
             )
 
-            # Get parameters from UI components safely
-            try:
-                auto_analyze_value = auto_transcribe.value
-            except:
-                logger.warning(
-                    "Failed to get auto_transcribe value, defaulting to True"
-                )
-                auto_analyze_value = True
-
-            try:
-                api_key_value = api_key_input.value
-            except:
-                logger.warning("Failed to get API key value, using default")
-                api_key_value = ""
-
-            try:
-                language_value = language_selector.value
-            except:
-                logger.warning("Failed to get language value, defaulting to 'auto'")
-                language_value = "auto"
-
-            # Get TTS settings
-            auto_speak_value = False
-            voice_value = "alloy"
-            audio_enabled_value = True
-            try:
-                auto_speak_value = auto_speak.value
-                voice_value = voice_selector.value
-                audio_enabled_value = enable_audio_output.value
-            except AttributeError as e:
-                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
+            # Use API key or default
+            if not api_key_value:
+                api_key_value = DEFAULT_API_KEY
 
             # Call transcriber
             try:
@@ -1179,7 +1149,7 @@ def create_interface():
 
         audio_recorder.stop_recording(
             fn=handle_recording_with_analysis,
-            inputs=[audio_recorder],  # Only the audio recorder data is passed
+            inputs=[audio_recorder, auto_transcribe, api_key_input, language_selector, auto_speak, voice_selector, enable_audio_output],
             outputs=[
                 status_msg,
                 audio_playback,
@@ -1194,22 +1164,9 @@ def create_interface():
         )
 
         # Process uploaded audio with automatic analysis
-        def process_uploaded_audio_with_analysis(audio_path, language, api_key):
+        def process_uploaded_audio_with_analysis(audio_path, language, api_key, auto_speak_value, voice_value, audio_enabled_value):
             if not audio_path:
                 return "No file uploaded", "", "", "", None
-
-            # Get TTS settings
-            auto_speak_value = False
-            voice_value = "alloy"
-            audio_enabled_value = True
-            try:
-                auto_speak_value = auto_speak.value
-                voice_value = voice_selector.value
-                audio_enabled_value = enable_audio_output.value
-            except AttributeError as e:
-                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
             try:
                 # Process the uploaded file
@@ -1273,7 +1230,7 @@ def create_interface():
 
         upload_transcribe_btn.click(
             fn=process_uploaded_audio_with_analysis,
-            inputs=[audio_upload, language_selector, api_key_input],
+            inputs=[audio_upload, language_selector, api_key_input, auto_speak, voice_selector, enable_audio_output],
             outputs=[
                 upload_status,
                 transcription_output,
@@ -1284,22 +1241,9 @@ def create_interface():
         )
 
         # Analyze text input
-        def analyze_text_input(text):
+        def analyze_text_input(text, auto_speak_value, voice_value, audio_enabled_value):
             if not text:
                 return "No text provided for analysis", "", "", None
-
-            # Get TTS settings
-            auto_speak_value = False
-            voice_value = "alloy"
-            audio_enabled_value = True
-            try:
-                auto_speak_value = auto_speak.value
-                voice_value = voice_selector.value
-                audio_enabled_value = enable_audio_output.value
-            except AttributeError as e:
-                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
             try:
                 # Analyze text (no source file)
@@ -1337,27 +1281,14 @@ def create_interface():
 
         analyze_text_btn.click(
             fn=analyze_text_input,
-            inputs=[text_input],
+            inputs=[text_input, auto_speak, voice_selector, enable_audio_output],
             outputs=[status_msg, analysis_output, thinking_display, tts_audio],
         ).then(fn=lambda: update_memory_display(), inputs=[], outputs=[memory_display])
 
         # Analyze transcription
-        def analyze_current_transcription(transcription):
+        def analyze_current_transcription(transcription, auto_speak_value, voice_value, audio_enabled_value):
             if not transcription:
                 return "No transcription to analyze", "", "", None
-
-            # Get TTS settings
-            auto_speak_value = False
-            voice_value = "alloy"
-            audio_enabled_value = True
-            try:
-                auto_speak_value = auto_speak.value
-                voice_value = voice_selector.value
-                audio_enabled_value = enable_audio_output.value
-            except AttributeError as e:
-                logger.warning(f"Failed to get TTS settings (AttributeError), using defaults: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to get TTS settings (unexpected error), using defaults: {e}")
 
             try:
                 analysis_result, thinking_process = transcriber.analyze_transcription(
@@ -1393,7 +1324,7 @@ def create_interface():
 
         analyze_btn.click(
             fn=analyze_current_transcription,
-            inputs=[transcription_output],
+            inputs=[transcription_output, auto_speak, voice_selector, enable_audio_output],
             outputs=[status_msg, analysis_output, thinking_display, tts_audio],
         ).then(fn=lambda: update_memory_display(), inputs=[], outputs=[memory_display])
 
