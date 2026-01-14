@@ -180,12 +180,15 @@ def file_summary_prompt(file_type: str, file_content: str):
     # Max 200 words
 ```
 
-### Execution Behavior
+### Async Operation
 
-Description generation is performed synchronously (the helper call blocks until the LLM returns or fails):
+Description generation is designed to be non-blocking:
 - Occurs when files are added to the helper
+- Runs in a background thread to avoid blocking main operations
+- File is immediately added with "Generating description..." placeholder
+- Description is updated asynchronously once generation completes
 - Falls back to "No description available" if LLM is unavailable
-- Errors are logged but don't prevent file tracking from continuing
+- Errors are logged but don't prevent file tracking
 
 ## Configuration
 

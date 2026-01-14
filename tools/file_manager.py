@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -414,8 +415,8 @@ class FileSystemManager:
     ):
         """Add a file to the global helper catalog with optional LLM-generated description.
         
-        This method runs synchronously: if no description is provided and an LLM
-        summarizer is supplied, it will block while generating the description.
+        This method runs asynchronously: if no description is provided and an LLM
+        summarizer is supplied, it will start description generation in a background thread.
         
         Args:
             file_path: Full path to the file
@@ -431,36 +432,63 @@ class FileSystemManager:
         if not os.path.exists(abs_path):
             raise FileNotFoundError(f"File {abs_path} does not exist")
         
-        # If no description provided and LLM is available, generate one
+        # If no description provided and LLM is available, generate one asynchronously
         if not description and llm_summarizer:
-            try:
-                content = self.read_file(abs_path)
-                # If we have any content, attempt to generate a summary
-                if content:
-                    # Determine file type
-                    file_ext = os.path.splitext(abs_path)[1].lower()
-                    file_type = file_ext.lstrip(".") if file_ext else "text"
-                    
-                    # Generate summary
-                    summary_prompt = file_summary_prompt(file_type, content)
-                    from langchain_core.messages import HumanMessage
-                    messages = [HumanMessage(content=summary_prompt)]
-                    response = llm_summarizer.invoke(messages)
-                    description = response.content
-                else:
-                    description = "No description available"
-            except Exception as e:
-                logger.error(f"Error generating description: {str(e)}")
-                description = f"Error generating description: {str(e)}"
+            # Add entry immediately with placeholder
+            self._update_global_helper_entry(
+                file_path=abs_path,
+                description="Generating description...",
+                origin=origin,
+            )
+            
+            # Start async description generation in background thread
+            def generate_description_async():
+                try:
+                    content = self.read_file(abs_path)
+                    # If we have any content, attempt to generate a summary
+                    if content:
+                        # Determine file type
+                        file_ext = os.path.splitext(abs_path)[1].lower()
+                        file_type = file_ext.lstrip(".") if file_ext else "text"
+                        
+                        # Generate summary
+                        summary_prompt = file_summary_prompt(file_type, content)
+                        from langchain_core.messages import HumanMessage
+                        messages = [HumanMessage(content=summary_prompt)]
+                        response = llm_summarizer.invoke(messages)
+                        generated_description = response.content
+                    else:
+                        generated_description = "No description available"
+                except Exception as e:
+                    logger.error(f"Error generating description for {abs_path}: {str(e)}")
+                    generated_description = "Error generating description"
+                
+                # Update with the generated description
+                self._update_global_helper_entry(
+                    file_path=abs_path,
+                    description=generated_description,
+                    origin=origin,
+                    update_existing=True,
+                )
+                logger.info(f"Async description generated for {os.path.basename(abs_path)}")
+            
+            # Start background thread
+            thread = threading.Thread(target=generate_description_async, daemon=True)
+            thread.start()
         elif not description:
-            description = "No description available"
-        
-        # Update the global helper
-        self._update_global_helper_entry(
-            file_path=abs_path,
-            description=description,
-            origin=origin,
-        )
+            # No LLM available, add with placeholder
+            self._update_global_helper_entry(
+                file_path=abs_path,
+                description="No description available",
+                origin=origin,
+            )
+        else:
+            # Description provided, add it directly
+            self._update_global_helper_entry(
+                file_path=abs_path,
+                description=description,
+                origin=origin,
+            )
         
         return self
 

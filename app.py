@@ -544,14 +544,6 @@ class SpacesTranscriber:
 transcriber = SpacesTranscriber(DEFAULT_API_KEY)
 
 
-def get_agent_llm():
-    """Helper function to get the LLM instance from the agent."""
-    try:
-        return AGENT.get_llm
-    except Exception:
-        return None
-
-
 def create_interface():
     """Create the Gradio interface for Hugging Face Spaces"""
     with gr.Blocks(title="Voice Recorder & AI Analysis") as app:
@@ -1556,7 +1548,7 @@ def create_interface():
                             
                             # Add to global helper catalog
                             try:
-                                llm = get_agent_llm()
+                                llm = AGENT.get_llm
                                 FILESYSTEM_MANAGER.add_file_to_global_helper(
                                     file_path=filepath,
                                     origin="google_drive",
@@ -1597,7 +1589,7 @@ def create_interface():
                         
                         # Add to global helper catalog
                         try:
-                            llm = get_agent_llm()
+                            llm = AGENT.get_llm
                             FILESYSTEM_MANAGER.add_file_to_global_helper(
                                 file_path=str(dest_path),
                                 origin="user_upload",
