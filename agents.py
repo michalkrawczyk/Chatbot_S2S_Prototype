@@ -274,7 +274,7 @@ class AgentLLM:
             return "No text provided for analysis."
 
         initial_state = AgentState(
-            messages=[HumanMessage(content=f"Analyze this transcribed text: {text}")],
+            messages=[HumanMessage(content=f"Analyze: {text}")],
             memory=memory or [],
             context=(
                 self._prepare_context_message(self._context[0], self._context[1])

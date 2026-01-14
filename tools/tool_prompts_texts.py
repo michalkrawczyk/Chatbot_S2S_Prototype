@@ -12,10 +12,10 @@ def file_summary_prompt(file_type: str, file_content: str):
     {file_content}
 
     Please provide a clear and concise summary that includes:
-    1. A brief overview of what this file contains (2-3 sentences)
+    1. Overview of file contents (2-3 sentences)
     2. The main categories or types of data present in the file
     3. Key patterns, trends, or insights that can be observed from a quick analysis
-    4. An estimate of the size/scope of the data (number of rows/entries if applicable)
+    4. Estimated size/scope (number of rows/entries if applicable)
 
     Your summary should be professional, factual, and highlight the most important aspects of the file content.
     Limit your response to 200 words maximum.
