@@ -297,12 +297,29 @@ class FileSystemManager:
 
     def read_file(self, file_path: str) -> str:
         """Read the content of a file based on its extension.
+        
+        This method is kept for backward compatibility. For structured results,
+        use read_file_safe() instead.
 
         Args:
             file_path: Path to the file
 
         Returns:
-            String representation of the file content
+            String representation of the file content, or error message
+        """
+        success, content = self.read_file_safe(file_path)
+        return content
+    
+    def read_file_safe(self, file_path: str) -> tuple[bool, str]:
+        """Read the content of a file and return structured result.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Tuple of (success: bool, content: str)
+            - If successful: (True, file content as string)
+            - If error: (False, error message)
         """
         corrected_file_path = (
             os.path.join(self.memory_dir, file_path)
@@ -311,57 +328,46 @@ class FileSystemManager:
         )
 
         if not os.path.exists(corrected_file_path):
-            raise FileNotFoundError(f"File {corrected_file_path} does not exist")
+            return (False, f"File {corrected_file_path} does not exist")
 
         file_ext = os.path.splitext(corrected_file_path)[1].lower()
 
         try:
             if file_ext not in SUPPORTED_FILETYPES:
-                raise ValueError(
-                    f"Unsupported file format: {file_ext}. Supported formats: {SUPPORTED_FILETYPES}"
-                )
+                return (False, f"Unsupported file format: {file_ext}. Supported formats: {SUPPORTED_FILETYPES}")
+            
             # Text files
             if file_ext in [".txt", ".md"]:
                 with open(corrected_file_path, "r", encoding="utf-8") as f:
-                    return f.read()
+                    return (True, f.read())
 
             # CSV files
             elif file_ext == ".csv":
                 DATASHEET_MANAGER.load_csv(corrected_file_path)
-                return (
-                    DATASHEET_MANAGER.df_as_str()
-                )  # TODO: or should only give description?
+                return (True, DATASHEET_MANAGER.df_as_str())
 
             # Excel files
             elif file_ext in [".xlsx", ".xls"]:
                 DATASHEET_MANAGER.load_excel(corrected_file_path)
-                return (
-                    DATASHEET_MANAGER.df_as_str()
-                )  # TODO: or should only give description?
+                return (True, DATASHEET_MANAGER.df_as_str())
 
             # Word documents
             elif file_ext in [".docx", ".doc"]:
-                raise NotImplementedError(
-                    "Reading Word documents is not implemented yet."
-                )
-                # doc = docx.Document(file_path)
-                # return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+                return (False, "Reading Word documents is not implemented yet.")
 
             elif file_ext in [".jpg", ".jpeg", ".png"]:
-                raise NotImplementedError("Reading images is not implemented yet.")
+                return (False, "Reading images is not implemented yet.")
 
             # Default fallback - try to read as text
             else:
                 try:
                     with open(corrected_file_path, "r", encoding="utf-8") as f:
-                        return f.read()
+                        return (True, f.read())
                 except UnicodeDecodeError:
-                    return f"[Binary file: {os.path.basename(corrected_file_path)}]"
+                    return (False, f"[Binary file: {os.path.basename(corrected_file_path)}]")
 
         except Exception as e:
-            return (
-                f"Error reading file {os.path.basename(corrected_file_path)}: {str(e)}"
-            )
+            return (False, f"Error reading file {os.path.basename(corrected_file_path)}: {str(e)}")
 
     def _get_timestamp(self):
         """Get the current timestamp in ISO format."""
@@ -444,9 +450,9 @@ class FileSystemManager:
             # Start async description generation in background thread
             def generate_description_async():
                 try:
-                    content = self.read_file(abs_path)
-                    # If we have any content, attempt to generate a summary
-                    if content:
+                    success, content = self.read_file_safe(abs_path)
+                    # If we have valid content, attempt to generate a summary
+                    if success and content:
                         # Determine file type
                         file_ext = os.path.splitext(abs_path)[1].lower()
                         file_type = file_ext.lstrip(".") if file_ext else "text"
@@ -458,7 +464,7 @@ class FileSystemManager:
                         response = llm_summarizer.invoke(messages)
                         generated_description = response.content
                     else:
-                        generated_description = "No description available"
+                        generated_description = content if not success else "No description available"
                 except Exception as e:
                     logger.error(f"Error generating description for {abs_path}: {str(e)}")
                     generated_description = "Error generating description"
@@ -525,3 +531,27 @@ class FileSystemManager:
             return self._global_helper_index[abs_path].get("description", None)
         
         return None
+    
+    def cleanup_deleted_files(self):
+        """Remove entries for files that no longer exist from the global helper.
+        
+        This method scans all entries in the global helper and removes those
+        where the file no longer exists on the filesystem.
+        
+        Returns:
+            Number of entries removed
+        """
+        paths_to_remove = []
+        
+        for file_path in self._global_helper_index.keys():
+            if not os.path.exists(file_path):
+                paths_to_remove.append(file_path)
+        
+        for path in paths_to_remove:
+            logger.info(f"Removing deleted file from global helper: {os.path.basename(path)}")
+            del self._global_helper_index[path]
+        
+        if paths_to_remove:
+            self._save_global_helper()
+        
+        return len(paths_to_remove)

@@ -355,6 +355,17 @@ class AgentLLM:
                 enhanced_context = f"File: {os.path.basename(context)}\nPath: {context}\nDescription: {file_description}"
                 if not file_exists:
                     enhanced_context += "\n(Note: File may have been moved or deleted)"
+                    # Trigger cleanup of deleted files in background
+                    import threading
+                    def cleanup_deleted():
+                        try:
+                            removed = FILESYSTEM_MANAGER.cleanup_deleted_files()
+                            if removed > 0:
+                                logger.info(f"Cleaned up {removed} deleted file(s) from global helper")
+                        except Exception as e:
+                            logger.error(f"Error during file cleanup: {e}")
+                    thread = threading.Thread(target=cleanup_deleted, daemon=True)
+                    thread.start()
                 logger.info(f"Setting context with helper description for: {context}")
                 self._context = (enhanced_context, context_type)
             else:
