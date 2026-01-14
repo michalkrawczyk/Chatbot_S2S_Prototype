@@ -618,6 +618,7 @@ def create_interface():
                 enable_audio_output = gr.Checkbox(
                     label="Enable Audio Output",
                     value=True,
+                    interactive=True,
                     info="Enable or disable all audio output (TTS)",
                 )
 
@@ -625,6 +626,7 @@ def create_interface():
                 auto_speak = gr.Checkbox(
                     label="Auto-speak analysis",
                     value=True,
+                    interactive=True,
                     info="Automatically generate speech for analysis results",
                 )
 
