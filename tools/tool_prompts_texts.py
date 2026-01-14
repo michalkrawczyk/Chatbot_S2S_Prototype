@@ -4,18 +4,24 @@ from langchain_core.prompts import PromptTemplate
 def file_summary_prompt(file_type: str, file_content: str):
     prompt_template = PromptTemplate(
         input_variables=["file_type", "file_content"],
-        template="""Summarize this {file_type} file concisely (max 150 words):
+        template="""
+    You are a data analysis expert tasked with creating concise summaries of file contents.
 
-{file_content}
+    I have a {file_type} file with the following content:
 
-Include:
-1. Brief overview (1-2 sentences)
-2. Main data categories
-3. Key patterns/insights
-4. Size/scope estimate
+    {file_content}
 
-Summary:
-""",
+    Please provide a clear and concise summary that includes:
+    1. Overview of file contents (2-3 sentences)
+    2. The main categories or types of data present in the file
+    3. Key patterns, trends, or insights that can be observed from a quick analysis
+    4. Estimated size/scope (number of rows/entries if applicable)
+
+    Your summary should be professional, factual, and highlight the most important aspects of the file content.
+    Limit your response to 200 words maximum.
+
+    Summary:
+    """,
     )
     formatted_prompt = prompt_template.format(
         file_type=file_type, file_content=file_content

@@ -45,52 +45,24 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
 
     summary_llm_prompt = summary_prompt(target_language)
 
-    # Simple query patterns - defined at function scope to avoid recreation
-    SIMPLE_PATTERNS = [
-        'what is', 'who is', 'when is', 'where is', 'how are',
-        'hello', 'hi', 'hey', 'thanks', 'thank you',
-        'what time', 'how much', 'tell me', 'joke',
-        'weather', 'translate', 'define', 'explain'
-    ]
-
-    # Function to detect if a query is simple and doesn't need full context
-    def is_simple_query(messages):
-        """Detect simple queries that don't need file context or extensive analysis."""
-        if not messages:
-            return False
-        
-        # Get the last human message
-        last_msg = messages[-1]
-        if not last_msg or not hasattr(last_msg, 'content'):
-            return False
-        
-        content = last_msg.content.lower()
-        
-        # Check if query is very short (likely simple)
-        if len(content.split()) <= 8:
-            for pattern in SIMPLE_PATTERNS:
-                if pattern in content:
-                    return True
-        
-        return False
-
     # Function to create messages for the agent
     def create_messages(state):
         messages = [SystemMessage(content=system_prompt)]
         
-        # Only include global file helper for non-simple queries
-        # This significantly reduces token usage for trivial tasks
-        if not is_simple_query(state["messages"]):
-            global_helper_context = FILESYSTEM_MANAGER.get_global_helper_as_context()
-            if global_helper_context and global_helper_context != "No files in global helper catalog.":
-                helper_message = HumanMessage(
-                    content=f"{global_helper_context}\nNote: Files available. Use tools to access."
-                )
-                messages.append(helper_message)
+        # Always include the global file helper catalog in the agent's context
+        # Note: If the catalog grows large, this could increase token usage significantly
+        global_helper_context = FILESYSTEM_MANAGER.get_global_helper_as_context()
+        if global_helper_context and global_helper_context != "No files in global helper catalog.":
+            helper_message = HumanMessage(
+                content=f"{global_helper_context}\n"
+                f"Note: These files are available for reference. Use the appropriate tools to access their content if needed."
+            )
+            messages.append(helper_message)
         
         if state.get("context"):
             context_message = HumanMessage(
-                content=f"Relevant file:\n{state['context']}\nUse if applicable."
+                content=f"Here is a file that might be relevant to the query:\n\n{state['context']}\n\n"
+                f"Please use this information if relevant to answer the query."
             )
             messages.append(context_message)
 
@@ -349,9 +321,12 @@ class AgentLLM:
     def _prepare_context_message(self, context: str, context_type: str = "file info"):
         """Prepare the context message for the agent."""
         context_messages = {
-            "file info": f"Relevant file:\n{context}\nCheck before exploring.",
-            "file content": f"File content:\n{context}\nCheck relevance first.",
-            "general": f"Additional info:\n{context}\nUse if relevant.",
+            "file info": f"Here is a file that might be relevant to the query:\n\n{context}\n\n"
+            f"Please check if this file contains information relevant to the query before exploring other sources.",
+            "file content": f"Here is the content of the file:\n\n{context}\n\n"
+            f"Please check if this information is relevant to the query before exploring other sources.",
+            "general": f"Here is some additional information that might be relevant to the query:\n\n{context}\n\n"
+            f"Please use this information if relevant to answer the query.",
         }
         if context_type not in context_messages:
             logger.warning(
