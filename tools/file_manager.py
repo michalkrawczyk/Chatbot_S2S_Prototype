@@ -511,7 +511,6 @@ class FileSystemManager:
         for file_info in self._global_helper_index.values():
             file_display_name = file_info.get("file", os.path.basename(file_info["path"]))
             context += f"**{file_display_name}**\n"
-            context += f"  - Path: {file_info['path']}\n"
             context += f"  - Description: {file_info['description']}\n\n"
         
         return context
