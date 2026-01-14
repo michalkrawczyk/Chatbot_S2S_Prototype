@@ -45,6 +45,14 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
 
     summary_llm_prompt = summary_prompt(target_language)
 
+    # Simple query patterns - defined at function scope to avoid recreation
+    SIMPLE_PATTERNS = [
+        'what is', 'who is', 'when is', 'where is', 'how are',
+        'hello', 'hi', 'hey', 'thanks', 'thank you',
+        'what time', 'how much', 'tell me', 'joke',
+        'weather', 'translate', 'define', 'explain'
+    ]
+
     # Function to detect if a query is simple and doesn't need full context
     def is_simple_query(messages):
         """Detect simple queries that don't need file context or extensive analysis."""
@@ -52,23 +60,15 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
             return False
         
         # Get the last human message
-        last_msg = messages[-1] if messages else None
+        last_msg = messages[-1]
         if not last_msg or not hasattr(last_msg, 'content'):
             return False
         
         content = last_msg.content.lower()
         
-        # Simple query patterns
-        simple_patterns = [
-            'what is', 'who is', 'when is', 'where is', 'how are',
-            'hello', 'hi ', 'hey', 'thanks', 'thank you',
-            'what time', 'how much', 'tell me', 'joke',
-            'weather', 'translate', 'define', 'explain'
-        ]
-        
         # Check if query is very short (likely simple)
         if len(content.split()) <= 8:
-            for pattern in simple_patterns:
+            for pattern in SIMPLE_PATTERNS:
                 if pattern in content:
                     return True
         

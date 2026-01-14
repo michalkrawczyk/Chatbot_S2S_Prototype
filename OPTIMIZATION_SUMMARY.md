@@ -178,6 +178,11 @@ simple_queries = [
 2. **More maintainable**: Clear detection logic for query complexity
 3. **Performance improvement**: Reduced token usage = faster responses & lower costs
 4. **Backward compatible**: No breaking changes to API or functionality
+5. **Code review fixes applied**:
+   - Fixed pattern matching for 'hi' to match without trailing space
+   - Removed redundant None check in message retrieval
+   - Moved SIMPLE_PATTERNS to function scope to avoid recreation
+   - Improved code efficiency and maintainability
 
 ## Files Modified
 
