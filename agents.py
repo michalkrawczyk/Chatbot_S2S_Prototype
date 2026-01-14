@@ -11,6 +11,7 @@ from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from general.logs import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT, DEFINED_TOOLS
+from tools.tool_register import FILESYSTEM_MANAGER
 from openai_client import SUPPORT_LANGUAGES
 
 
@@ -47,6 +48,17 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
     # Function to create messages for the agent
     def create_messages(state):
         messages = [SystemMessage(content=system_prompt)]
+        
+        # Always include the global file helper catalog in the agent's context
+        # Note: If the catalog grows large, this could increase token usage significantly
+        global_helper_context = FILESYSTEM_MANAGER.get_global_helper_as_context()
+        if global_helper_context and global_helper_context != "No files in global helper catalog.":
+            helper_message = HumanMessage(
+                content=f"{global_helper_context}\n"
+                f"Note: These files are available for reference. Use the appropriate tools to access their content if needed."
+            )
+            messages.append(helper_message)
+        
         if state.get("context"):
             context_message = HumanMessage(
                 content=f"Here is a file that might be relevant to the query:\n\n{state['context']}\n\n"
@@ -325,11 +337,43 @@ class AgentLLM:
         return context_messages.get(context_type, context)
 
     def set_context(self, context: str, context_type: str = "file info"):
-        """Set the context for the agent."""
-        # TODO: Add awerness of length of context (maximum token size)
-
-        logger.info(f"Setting context for the agent: {context_type} - {context}")
-        self._context = (context, context_type)
+        """Set the context for the agent.
+        
+        Args:
+            context: Context string or file path
+            context_type: Type of context being set
+        """
+        # TODO: Add awareness of length of context (maximum token size)
+        
+        # If context type is "file info", check global helper first (even if file doesn't exist)
+        if context_type == "file info":
+            # Try to get description from global helper regardless of file existence
+            file_description = FILESYSTEM_MANAGER.get_file_description_from_helper(context)
+            if file_description:
+                # Include the helper description in the context
+                file_exists = os.path.isfile(context)
+                enhanced_context = f"File: {os.path.basename(context)}\nPath: {context}\nDescription: {file_description}"
+                if not file_exists:
+                    enhanced_context += "\n(Note: File may have been moved or deleted)"
+                    # Trigger cleanup of deleted files in background
+                    import threading
+                    def cleanup_deleted():
+                        try:
+                            removed = FILESYSTEM_MANAGER.cleanup_deleted_files()
+                            if removed > 0:
+                                logger.info(f"Cleaned up {removed} deleted file(s) from global helper")
+                        except Exception as e:
+                            logger.error(f"Error during file cleanup: {e}")
+                    thread = threading.Thread(target=cleanup_deleted, daemon=True)
+                    thread.start()
+                logger.info(f"Setting context with helper description for: {context}")
+                self._context = (enhanced_context, context_type)
+            else:
+                logger.info(f"Setting context without helper description for: {context}")
+                self._context = (context, context_type)
+        else:
+            logger.info(f"Setting context for the agent: {context_type} - {context}")
+            self._context = (context, context_type)
 
     def change_summary_language(self, language: str):
         """Set the language for the summary."""

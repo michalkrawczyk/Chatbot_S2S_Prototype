@@ -15,6 +15,11 @@ def summary_prompt(language=None):
 
     system_text = f"""System: You are a helpful AI assistant that creates structured, concise summaries.
 
+        FILE REFERENCE GUIDELINES:
+        - When mentioning files, use ONLY the filename (e.g., "config.json", "data.csv")
+        - NEVER include full directory paths or absolute paths in your responses
+        - Keep file references short and user-friendly
+
         For the following response:
 
         If tools were used during processing:

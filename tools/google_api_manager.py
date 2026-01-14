@@ -27,8 +27,9 @@ class GoogleClient:
             env_var_name (str): Name of the environment variable holding the service key JSON.
             memory_dir (str): Directory to save downloaded files.
 
-        Raises:
-            ValueError: If the environment variable is not set or contains invalid JSON.
+        Note:
+            If the environment variable is not set, Google API features will be disabled gracefully.
+            If the JSON is invalid, a ValueError will be raised.
         """
         service_key_json = os.environ.get(env_var_name)
         self.memory_dir = memory_dir
@@ -37,7 +38,11 @@ class GoogleClient:
         os.makedirs(self.memory_dir, exist_ok=True)
 
         if not service_key_json:
-            raise ValueError(f"Environment variable {env_var_name} not set")
+            logger.warning(f"Environment variable {env_var_name} not set. Google API features will be disabled.")
+            self.credentials = None
+            self.drive_service = None
+            self.sheets_service = None
+            return
 
         try:
             self.service_key_dict = json.loads(service_key_json)
