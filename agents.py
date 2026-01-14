@@ -93,7 +93,6 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
                 content=f"Relevant file:\n{state['context']}\nUse if applicable."
             )
             messages.append(context_message)
-            messages.append(context_message)
 
         messages.extend(state["messages"])
 
