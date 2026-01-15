@@ -619,7 +619,7 @@ def create_interface():
                     label="Enable Audio Output",
                     value=True,
                     interactive=True,
-                    info="Enable or disable all audio output (TTS)",
+                    info="When unchecked, audio generation is skipped entirely (saves API costs)",
                 )
 
                 # Auto-speak option
@@ -627,7 +627,7 @@ def create_interface():
                     label="Auto-speak analysis",
                     value=True,
                     interactive=True,
-                    info="Automatically generate speech for analysis results",
+                    info="Automatically generate speech after analysis (requires Enable Audio Output)",
                 )
 
                 # Enable Audio button for autoplay permission
@@ -1117,6 +1117,8 @@ def create_interface():
                             )
                             if tts_audio_path:
                                 status_msg += " with speech"
+                            elif not audio_enabled_value:
+                                status_msg += " (audio output disabled)"
                             else:
                                 status_msg += (
                                     f" (speech generation failed: {tts_status})"
@@ -1210,7 +1212,7 @@ def create_interface():
                                 analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                             )
                         )
-                        if not tts_audio_path:
+                        if not tts_audio_path and audio_enabled_value:
                             status_msg += f" (speech generation failed: {tts_status})"
 
                 conditional_logger_info(
@@ -1260,7 +1262,7 @@ def create_interface():
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
                         analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                     )
-                    if not tts_audio_path:
+                    if not tts_audio_path and audio_enabled_value:
                         return (
                             f"Text analysis completed but speech generation failed: {tts_status}",
                             analysis_result,
@@ -1304,7 +1306,7 @@ def create_interface():
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
                         analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
                     )
-                    if not tts_audio_path:
+                    if not tts_audio_path and audio_enabled_value:
                         return (
                             f"Analysis completed but speech generation failed: {tts_status}",
                             analysis_result,
