@@ -16,6 +16,12 @@ from tools.datasheet_manager import DATASHEET_MANAGER
 from tools.tool_prompts_texts import file_summary_prompt
 
 
+# Constants for description placeholders
+PLACEHOLDER_GENERATING = "Generating description..."
+PLACEHOLDER_NO_DESCRIPTION = "No description available"
+PLACEHOLDER_ERROR = "Error generating description"
+
+
 class FileInfo(BaseModel):
     """Model for file information stored in the index."""
 
@@ -181,14 +187,14 @@ class FileSystemManager:
                     # If content is empty, just add a placeholder
                     self._file_index[rel_path] = {
                         "path": file_path,
-                        "description": "No description available",
+                        "description": PLACEHOLDER_NO_DESCRIPTION,
                         "origin": "undefined",  # TODO
                         "last_updated": self._get_timestamp(),
                     }
                     # Also add to global helper
                     self._update_global_helper_entry(
                         file_path=file_path,
-                        description="No description available",
+                        description=PLACEHOLDER_NO_DESCRIPTION,
                         origin="file_scan",
                     )
 
@@ -255,7 +261,7 @@ class FileSystemManager:
             else:
                 # File not in index, but we don't want to update
                 file_info = FileInfo(
-                    path=file_path, description="No description available"
+                    path=file_path, description=PLACEHOLDER_NO_DESCRIPTION
                 )
                 result.append(file_info)
 
@@ -456,7 +462,7 @@ class FileSystemManager:
             # Add entry immediately with placeholder
             self._update_global_helper_entry(
                 file_path=abs_path,
-                description="Generating description...",
+                description=PLACEHOLDER_GENERATING,
                 origin=origin,
             )
             
@@ -476,10 +482,15 @@ class FileSystemManager:
                         response = llm_summarizer.invoke(messages)
                         generated_description = response.content
                     else:
-                        generated_description = content if not success else "No description available"
+                        # If file read failed, content contains the error message
+                        # Otherwise, if success but no content, use placeholder
+                        if not success:
+                            generated_description = content  # Error message
+                        else:
+                            generated_description = PLACEHOLDER_NO_DESCRIPTION
                 except Exception as e:
                     logger.error(f"Error generating description for {abs_path}: {str(e)}")
-                    generated_description = "Error generating description"
+                    generated_description = PLACEHOLDER_ERROR
                 
                 # Update with the generated description
                 self._update_global_helper_entry(
@@ -496,7 +507,7 @@ class FileSystemManager:
             # No LLM available, add with placeholder
             self._update_global_helper_entry(
                 file_path=abs_path,
-                description="No description available",
+                description=PLACEHOLDER_NO_DESCRIPTION,
                 origin=origin,
             )
         else:
@@ -566,6 +577,16 @@ class FileSystemManager:
         
         return len(paths_to_remove)
     
+    def cleanup(self):
+        """Cleanup resources used by the FileSystemManager.
+        
+        This method should be called when the FileSystemManager instance
+        is no longer needed to ensure proper cleanup of the thread pool executor.
+        """
+        if self._executor:
+            self._executor.shutdown(wait=False)
+            logger.info("FileSystemManager thread pool executor shutdown")
+    
     def set_llm_summarizer(self, llm_summarizer: Optional[BaseChatModel]):
         """Set the LLM summarizer for async description generation.
         
@@ -605,7 +626,7 @@ class FileSystemManager:
             description = file_info.get("description", "")
             # Check if description is missing, empty, or a placeholder
             if (not description or 
-                description in ["", "No description available", "Generating description...", "Error generating description"]):
+                description in ["", PLACEHOLDER_NO_DESCRIPTION, PLACEHOLDER_GENERATING, PLACEHOLDER_ERROR]):
                 # Verify file still exists before attempting update
                 if os.path.exists(file_path):
                     files_to_update.append((file_path, file_info.get("origin", "unknown")))
@@ -638,7 +659,7 @@ class FileSystemManager:
                 # Mark as generating
                 self._update_global_helper_entry(
                     file_path=file_path,
-                    description="Generating description...",
+                    description=PLACEHOLDER_GENERATING,
                     origin=origin,
                     update_existing=True,
                 )
@@ -659,13 +680,17 @@ class FileSystemManager:
                     
                     logger.info(f"Successfully generated description for {filename}")
                 else:
-                    # If file read failed, use the error message as description
-                    generated_description = content if not success else "No description available"
+                    # If file read failed, content contains the error message
+                    # Otherwise, if success but no content, use placeholder
+                    if not success:
+                        generated_description = content  # Error message
+                    else:
+                        generated_description = PLACEHOLDER_NO_DESCRIPTION
                     logger.warning(f"Could not read file content for {filename}: {generated_description}")
                     
             except Exception as e:
                 logger.error(f"Error generating async description for {filename}: {str(e)}")
-                generated_description = "Error generating description"
+                generated_description = PLACEHOLDER_ERROR
             
             # Update with the generated description
             self._update_global_helper_entry(
