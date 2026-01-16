@@ -1,10 +1,12 @@
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 import pandas as pd
 from pydantic import BaseModel
 
@@ -42,6 +44,8 @@ class FileSystemManager:
         self._global_helper_index = {}
         # Store reference to LLM for async operations (set by set_llm_summarizer)
         self._llm_summarizer = None
+        # Thread pool for async description updates (limit concurrent operations)
+        self._executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="desc_updater")
         # Ensure the memory directory exists
         Path(self.memory_dir).mkdir(parents=True, exist_ok=True)
         Path(DATA_FILES_DIR).mkdir(parents=True, exist_ok=True)
@@ -456,7 +460,7 @@ class FileSystemManager:
                 origin=origin,
             )
             
-            # Start async description generation in background thread
+            # Start async description generation in thread pool
             def generate_description_async():
                 try:
                     success, content = self.read_file_safe(abs_path)
@@ -468,7 +472,6 @@ class FileSystemManager:
                         
                         # Generate summary
                         summary_prompt = file_summary_prompt(file_type, content)
-                        from langchain_core.messages import HumanMessage
                         messages = [HumanMessage(content=summary_prompt)]
                         response = llm_summarizer.invoke(messages)
                         generated_description = response.content
@@ -487,9 +490,8 @@ class FileSystemManager:
                 )
                 logger.info(f"Async description generated for {os.path.basename(abs_path)}")
             
-            # Start background thread
-            thread = threading.Thread(target=generate_description_async, daemon=True)
-            thread.start()
+            # Submit to thread pool executor
+            self._executor.submit(generate_description_async)
         elif not description:
             # No LLM available, add with placeholder
             self._update_global_helper_entry(
@@ -621,6 +623,9 @@ class FileSystemManager:
     def _update_description_async(self, file_path: str, origin: str):
         """Update a file's description asynchronously in a background thread.
         
+        Uses the thread pool executor to manage concurrent operations and
+        prevent resource exhaustion.
+        
         Args:
             file_path: Full path to the file
             origin: Origin of the file entry
@@ -648,7 +653,6 @@ class FileSystemManager:
                     
                     # Generate summary using LLM
                     summary_prompt = file_summary_prompt(file_type, content)
-                    from langchain_core.messages import HumanMessage
                     messages = [HumanMessage(content=summary_prompt)]
                     response = self._llm_summarizer.invoke(messages)
                     generated_description = response.content
@@ -672,6 +676,5 @@ class FileSystemManager:
             )
             logger.info(f"Completed async description update for {filename}")
         
-        # Start background thread
-        thread = threading.Thread(target=generate_and_update, daemon=True)
-        thread.start()
+        # Submit to thread pool executor
+        self._executor.submit(generate_and_update)
