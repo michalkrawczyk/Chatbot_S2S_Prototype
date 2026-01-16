@@ -165,8 +165,6 @@ class FileSystemManager:
                     summary_prompt = file_summary_prompt(file_type, content)
 
                     # Generate summary using the LLM
-                    from langchain_core.messages import HumanMessage
-
                     messages = [HumanMessage(content=summary_prompt)]
                     response = llm_summarizer.invoke(messages)
                     description = response.content
