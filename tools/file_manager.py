@@ -480,12 +480,8 @@ class FileSystemManager:
                         response = llm_summarizer.invoke(messages)
                         generated_description = response.content
                     else:
-                        # If file read failed, content contains the error message
-                        # Otherwise, if success but no content, use placeholder
-                        if not success:
-                            generated_description = content  # Error message
-                        else:
-                            generated_description = PLACEHOLDER_NO_DESCRIPTION
+                        # Handle file read errors
+                        generated_description = self._handle_description_error(success, content)
                 except Exception as e:
                     logger.error(f"Error generating description for {abs_path}: {str(e)}")
                     generated_description = PLACEHOLDER_ERROR
@@ -580,9 +576,10 @@ class FileSystemManager:
         
         This method should be called when the FileSystemManager instance
         is no longer needed to ensure proper cleanup of the thread pool executor.
+        Waits for up to 5 seconds for pending tasks to complete.
         """
         if self._executor:
-            self._executor.shutdown(wait=False)
+            self._executor.shutdown(wait=True, timeout=5.0)
             logger.info("FileSystemManager thread pool executor shutdown")
     
     def set_llm_summarizer(self, llm_summarizer: Optional[BaseChatModel]):
@@ -624,7 +621,7 @@ class FileSystemManager:
             description = file_info.get("description", "")
             # Check if description is missing, empty, or a placeholder
             if (not description or 
-                description in ["", PLACEHOLDER_NO_DESCRIPTION, PLACEHOLDER_GENERATING, PLACEHOLDER_ERROR]):
+                description in [PLACEHOLDER_NO_DESCRIPTION, PLACEHOLDER_GENERATING, PLACEHOLDER_ERROR]):
                 # Verify file still exists before attempting update
                 if os.path.exists(file_path):
                     files_to_update.append((file_path, file_info.get("origin", "unknown")))
@@ -638,6 +635,23 @@ class FileSystemManager:
         # Start async update for each file
         for file_path, origin in files_to_update:
             self._update_description_async(file_path, origin)
+    
+    def _handle_description_error(self, success: bool, content: str) -> str:
+        """Handle errors when reading file content for description generation.
+        
+        Args:
+            success: Whether the file read was successful
+            content: The file content (if success) or error message (if not success)
+            
+        Returns:
+            Appropriate description based on the error condition
+        """
+        if not success:
+            # File read failed, content contains the error message
+            return content
+        else:
+            # Success but no content
+            return PLACEHOLDER_NO_DESCRIPTION
     
     def _update_description_async(self, file_path: str, origin: str):
         """Update a file's description asynchronously in a background thread.
@@ -678,12 +692,8 @@ class FileSystemManager:
                     
                     logger.info(f"Successfully generated description for {filename}")
                 else:
-                    # If file read failed, content contains the error message
-                    # Otherwise, if success but no content, use placeholder
-                    if not success:
-                        generated_description = content  # Error message
-                    else:
-                        generated_description = PLACEHOLDER_NO_DESCRIPTION
+                    # Handle file read errors
+                    generated_description = self._handle_description_error(success, content)
                     logger.warning(f"Could not read file content for {filename}: {generated_description}")
                     
             except Exception as e:
