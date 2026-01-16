@@ -576,10 +576,10 @@ class FileSystemManager:
         
         This method should be called when the FileSystemManager instance
         is no longer needed to ensure proper cleanup of the thread pool executor.
-        Waits for up to 5 seconds for pending tasks to complete.
+        Waits for all pending tasks to complete before shutting down.
         """
         if self._executor:
-            self._executor.shutdown(wait=True, timeout=5.0)
+            self._executor.shutdown(wait=True)
             logger.info("FileSystemManager thread pool executor shutdown")
     
     def set_llm_summarizer(self, llm_summarizer: Optional[BaseChatModel]):
