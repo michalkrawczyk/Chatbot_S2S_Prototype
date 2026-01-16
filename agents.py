@@ -259,6 +259,10 @@ class AgentLLM:
                 summary_llm=self._llm,
             )
             self._model_name = model_name
+            
+            # Set LLM for FileSystemManager to enable async description updates
+            FILESYSTEM_MANAGER.set_llm_summarizer(self._llm)
+            
             logger.info(
                 f"Main Agent created with model: {model_name}, language: {self._summary_language}"
             )

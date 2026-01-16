@@ -40,6 +40,8 @@ class FileSystemManager:
         # Per-instance indexes
         self._file_index = {}
         self._global_helper_index = {}
+        # Store reference to LLM for async operations (set by set_llm_summarizer)
+        self._llm_summarizer = None
         # Ensure the memory directory exists
         Path(self.memory_dir).mkdir(parents=True, exist_ok=True)
         Path(DATA_FILES_DIR).mkdir(parents=True, exist_ok=True)
@@ -57,7 +59,11 @@ class FileSystemManager:
             self._save_index()
 
     def _initialize_global_helper(self):
-        """Initialize or load the global file helper."""
+        """Initialize or load the global file helper.
+        
+        After loading, triggers an async operation to update any entries
+        with missing or empty descriptions.
+        """
         if os.path.exists(self.global_helper_path):
             try:
                 with open(self.global_helper_path, "r") as f:
@@ -90,6 +96,9 @@ class FileSystemManager:
                 self._global_helper_index = data
         else:
             self._save_global_helper()
+        
+        # Trigger async update for missing descriptions
+        self._trigger_async_description_update()
 
     def _save_index(self):
         """Save the current file index to disk."""
@@ -554,3 +563,115 @@ class FileSystemManager:
             self._save_global_helper()
         
         return len(paths_to_remove)
+    
+    def set_llm_summarizer(self, llm_summarizer: Optional[BaseChatModel]):
+        """Set the LLM summarizer for async description generation.
+        
+        This should be called after the LLM is initialized to enable
+        automatic description updates for files with missing descriptions.
+        
+        Args:
+            llm_summarizer: LLM model to use for generating file summaries
+            
+        Returns:
+            self for method chaining
+        """
+        self._llm_summarizer = llm_summarizer
+        logger.info("LLM summarizer set for FileSystemManager")
+        
+        # Trigger async update if there are files with missing descriptions
+        self._trigger_async_description_update()
+        
+        return self
+    
+    def _trigger_async_description_update(self):
+        """Trigger async update for files with missing or empty descriptions.
+        
+        This method scans the global helper index for entries with missing
+        descriptions and starts background threads to generate them using
+        the configured LLM summarizer. This is non-blocking and runs
+        asynchronously.
+        """
+        # Only proceed if we have an LLM summarizer configured
+        if not self._llm_summarizer:
+            logger.debug("No LLM summarizer configured, skipping async description update")
+            return
+        
+        # Find files with missing descriptions
+        files_to_update = []
+        for file_path, file_info in self._global_helper_index.items():
+            description = file_info.get("description", "")
+            # Check if description is missing, empty, or a placeholder
+            if (not description or 
+                description in ["", "No description available", "Generating description...", "Error generating description"]):
+                # Verify file still exists before attempting update
+                if os.path.exists(file_path):
+                    files_to_update.append((file_path, file_info.get("origin", "unknown")))
+        
+        if not files_to_update:
+            logger.debug("No files with missing descriptions found")
+            return
+        
+        logger.info(f"Found {len(files_to_update)} file(s) with missing descriptions, starting async update")
+        
+        # Start async update for each file
+        for file_path, origin in files_to_update:
+            self._update_description_async(file_path, origin)
+    
+    def _update_description_async(self, file_path: str, origin: str):
+        """Update a file's description asynchronously in a background thread.
+        
+        Args:
+            file_path: Full path to the file
+            origin: Origin of the file entry
+        """
+        def generate_and_update():
+            try:
+                filename = os.path.basename(file_path)
+                logger.info(f"Starting async description generation for {filename}")
+                
+                # Mark as generating
+                self._update_global_helper_entry(
+                    file_path=file_path,
+                    description="Generating description...",
+                    origin=origin,
+                    update_existing=True,
+                )
+                
+                # Read file content
+                success, content = self.read_file_safe(file_path)
+                
+                if success and content:
+                    # Determine file type
+                    file_ext = os.path.splitext(file_path)[1].lower()
+                    file_type = file_ext.lstrip(".") if file_ext else "text"
+                    
+                    # Generate summary using LLM
+                    summary_prompt = file_summary_prompt(file_type, content)
+                    from langchain_core.messages import HumanMessage
+                    messages = [HumanMessage(content=summary_prompt)]
+                    response = self._llm_summarizer.invoke(messages)
+                    generated_description = response.content
+                    
+                    logger.info(f"Successfully generated description for {filename}")
+                else:
+                    # If file read failed, use the error message as description
+                    generated_description = content if not success else "No description available"
+                    logger.warning(f"Could not read file content for {filename}: {generated_description}")
+                    
+            except Exception as e:
+                logger.error(f"Error generating async description for {filename}: {str(e)}")
+                generated_description = "Error generating description"
+            
+            # Update with the generated description
+            self._update_global_helper_entry(
+                file_path=file_path,
+                description=generated_description,
+                origin=origin,
+                update_existing=True,
+            )
+            logger.info(f"Completed async description update for {filename}")
+        
+        # Start background thread
+        thread = threading.Thread(target=generate_and_update, daemon=True)
+        thread.start()
