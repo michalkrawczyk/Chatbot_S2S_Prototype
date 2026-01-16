@@ -480,7 +480,7 @@ class FileSystemManager:
                         response = llm_summarizer.invoke(messages)
                         generated_description = response.content
                     else:
-                        # Handle file read errors
+                        # File read failed or returned empty content
                         generated_description = self._handle_description_error(success, content)
                 except Exception as e:
                     logger.error(f"Error generating description for {abs_path}: {str(e)}")
@@ -619,9 +619,10 @@ class FileSystemManager:
         files_to_update = []
         for file_path, file_info in self._global_helper_index.items():
             description = file_info.get("description", "")
-            # Check if description is missing, empty, or a placeholder
-            if (not description or 
-                description in [PLACEHOLDER_NO_DESCRIPTION, PLACEHOLDER_GENERATING, PLACEHOLDER_ERROR]):
+            # Check if description is missing (empty or placeholder)
+            # not description handles empty strings and None
+            # The list check handles known placeholder strings
+            if not description or description in [PLACEHOLDER_NO_DESCRIPTION, PLACEHOLDER_GENERATING, PLACEHOLDER_ERROR]:
                 # Verify file still exists before attempting update
                 if os.path.exists(file_path):
                     files_to_update.append((file_path, file_info.get("origin", "unknown")))
@@ -692,7 +693,7 @@ class FileSystemManager:
                     
                     logger.info(f"Successfully generated description for {filename}")
                 else:
-                    # Handle file read errors
+                    # File read failed or returned empty content
                     generated_description = self._handle_description_error(success, content)
                     logger.warning(f"Could not read file content for {filename}: {generated_description}")
                     
