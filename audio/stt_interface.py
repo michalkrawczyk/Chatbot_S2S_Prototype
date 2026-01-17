@@ -197,12 +197,12 @@ class WhisperSTT(STTInterface):
 class NemoSTT(STTInterface):
     """NVIDIA Canary implementation of STT"""
 
-    def __init__(self, model_name="nvidia/canary-1b", target_sample_rate=16000):
+    def __init__(self, model_name="nvidia/canary-1b-v2", target_sample_rate=16000):
         """
         Initialize CanarySTT with Canary model
 
         Args:
-            model_name (str): Name of the Canary model to use (default: nvidia/canary-1b)
+            model_name (str): Name of the Canary model to use (default: nvidia/canary-1b-v2)
             target_sample_rate (int): Target sample rate for audio processing (default: 16000 Hz)
         """
         self.model_name = model_name
@@ -285,8 +285,9 @@ class NemoSTT(STTInterface):
                 if language and language != "auto":
                     # Convert "eng" to "en", keep others as-is
                     lang_code = "en" if language == "eng" else language
-                    # Canary prompt format: "<|source_lang|><|transcribe|>"
-                    prompt = f"<|{lang_code}|><|transcribe|>"
+                    # Canary prompt format: "<|source_lang|><|task|><|style|>"
+                    # style: "pc" = with punctuation/capitalization, "npc" = no punctuation
+                    prompt = f"<|{lang_code}|><|transcribe|><|pc|>"
                     logger.info(f"Using Canary prompt: {prompt}")
                     hypotheses = self.model.transcribe(
                         [audio_path],
@@ -294,9 +295,14 @@ class NemoSTT(STTInterface):
                         prompt=prompt
                     )
                 else:
-                    # Auto-detect language
-                    logger.info("Using auto language detection")
-                    hypotheses = self.model.transcribe([audio_path], batch_size=1)
+                    # Auto-detect language - use English as default with punctuation
+                    prompt = "<|en|><|transcribe|><|pc|>"
+                    logger.info(f"Using auto language detection with prompt: {prompt}")
+                    hypotheses = self.model.transcribe(
+                        [audio_path],
+                        batch_size=1,
+                        prompt=prompt
+                    )
 
                 if hypotheses and len(hypotheses) > 0:
                     transcription = hypotheses[0].text if hasattr(hypotheses[0], 'text') else str(hypotheses[0])
@@ -378,7 +384,7 @@ class STTFactory:
                 raise ValueError("openai_client is required for WhisperSTT")
             return WhisperSTT(openai_client)
         elif model_type.lower() in ["nemo", "canary"]:
-            model_name = kwargs.get("model_name", "nvidia/canary-1b")
+            model_name = kwargs.get("model_name", "nvidia/canary-1b-v2")
             target_sample_rate = kwargs.get("target_sample_rate", 16000)
             return NemoSTT(model_name, target_sample_rate)
         else:
