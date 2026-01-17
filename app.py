@@ -619,15 +619,15 @@ def create_interface():
                     label="Enable Audio Output",
                     value=True,
                     interactive=True,
-                    info="When unchecked, audio generation is skipped entirely (saves API costs)",
+                    info="Master switch: when unchecked, all audio generation is disabled",
                 )
 
                 # Auto-speak option
                 auto_speak = gr.Checkbox(
-                    label="Auto-speak analysis",
+                    label="Auto-speak Analysis",
                     value=True,
                     interactive=True,
-                    info="Automatically generate speech after analysis (requires Enable Audio Output)",
+                    info="Auto-generate speech after analysis (requires Audio Output enabled)",
                 )
 
                 # Enable Audio button for autoplay permission
@@ -1108,17 +1108,15 @@ def create_interface():
                         transcriber.add_to_agent_memory(transcription, analysis_result)
                         status_msg += " and analyzed"
 
-                        # Generate speech if auto-speak is enabled
-                        if auto_speak_value:
+                        # Generate speech if both auto-speak and audio output are enabled
+                        if auto_speak_value and audio_enabled_value:
                             tts_audio_path, tts_status = (
                                 transcriber.generate_speech_from_text(
-                                    analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
+                                    analysis_result, voice_value, stream=False, audio_enabled=True
                                 )
                             )
                             if tts_audio_path:
                                 status_msg += " with speech"
-                            elif not audio_enabled_value:
-                                status_msg += " (audio output disabled)"
                             else:
                                 status_msg += (
                                     f" (speech generation failed: {tts_status})"
@@ -1205,14 +1203,14 @@ def create_interface():
                     # Add to agent memory
                     transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                    # Generate speech if auto-speak is enabled
-                    if auto_speak_value:
+                    # Generate speech if both auto-speak and audio output are enabled
+                    if auto_speak_value and audio_enabled_value:
                         tts_audio_path, tts_status = (
                             transcriber.generate_speech_from_text(
-                                analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
+                                analysis_result, voice_value, stream=False, audio_enabled=True
                             )
                         )
-                        if not tts_audio_path and audio_enabled_value:
+                        if not tts_audio_path:
                             status_msg += f" (speech generation failed: {tts_status})"
 
                 conditional_logger_info(
@@ -1256,13 +1254,13 @@ def create_interface():
                 # Add to agent memory
                 transcriber.add_to_agent_memory(text, analysis_result)
 
-                # Generate speech if auto-speak is enabled
+                # Generate speech if both auto-speak and audio output are enabled
                 tts_audio_path = None
-                if auto_speak_value:
+                if auto_speak_value and audio_enabled_value:
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
-                        analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
+                        analysis_result, voice_value, stream=False, audio_enabled=True
                     )
-                    if not tts_audio_path and audio_enabled_value:
+                    if not tts_audio_path:
                         return (
                             f"Text analysis completed but speech generation failed: {tts_status}",
                             analysis_result,
@@ -1300,13 +1298,13 @@ def create_interface():
                 # Add to agent memory
                 transcriber.add_to_agent_memory(transcription, analysis_result)
 
-                # Generate speech if auto-speak is enabled
+                # Generate speech if both auto-speak and audio output are enabled
                 tts_audio_path = None
-                if auto_speak_value:
+                if auto_speak_value and audio_enabled_value:
                     tts_audio_path, tts_status = transcriber.generate_speech_from_text(
-                        analysis_result, voice_value, stream=False, audio_enabled=audio_enabled_value
+                        analysis_result, voice_value, stream=False, audio_enabled=True
                     )
-                    if not tts_audio_path and audio_enabled_value:
+                    if not tts_audio_path:
                         return (
                             f"Analysis completed but speech generation failed: {tts_status}",
                             analysis_result,
