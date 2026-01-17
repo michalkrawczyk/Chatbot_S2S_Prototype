@@ -197,12 +197,12 @@ class WhisperSTT(STTInterface):
 class NemoSTT(STTInterface):
     """NVIDIA Canary implementation of STT"""
 
-    def __init__(self, model_name="nvidia/canary-1b", target_sample_rate=16000):
+    def __init__(self, model_name="nvidia/canary-1b-v2", target_sample_rate=16000):
         """
         Initialize CanarySTT with Canary model
 
         Args:
-            model_name (str): Name of the Canary model to use (default: nvidia/canary-1b)
+            model_name (str): Name of the Canary model to use (default: nvidia/canary-1b-v2)
             target_sample_rate (int): Target sample rate for audio processing (default: 16000 Hz)
         """
         self.model_name = model_name
@@ -384,7 +384,7 @@ class STTFactory:
                 raise ValueError("openai_client is required for WhisperSTT")
             return WhisperSTT(openai_client)
         elif model_type.lower() in ["nemo", "canary"]:
-            model_name = kwargs.get("model_name", "nvidia/canary-1b")
+            model_name = kwargs.get("model_name", "nvidia/canary-1b-v2")
             target_sample_rate = kwargs.get("target_sample_rate", 16000)
             return NemoSTT(model_name, target_sample_rate)
         else:
