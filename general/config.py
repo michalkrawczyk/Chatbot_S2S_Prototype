@@ -8,7 +8,7 @@ SUPPORTED_FILETYPES = (".txt", ".pdf", ".docx", ".jpg", ".png", ".csv", ".xls", 
 
 # Settings
 ADDITIONAL_LOGGER_INFO = True
-RECURSION_LIMIT = 10
+RECURSION_LIMIT = 20
 AGENT_TRACE = True
 AGENT_VERBOSE = True
 KEEP_LAST_UPLOADED_FILE_IN_CONTEXT = True
