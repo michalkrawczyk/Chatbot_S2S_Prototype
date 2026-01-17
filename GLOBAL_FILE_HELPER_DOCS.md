@@ -182,13 +182,30 @@ def file_summary_prompt(file_type: str, file_content: str):
 
 ### Async Operation
 
-Description generation is designed to be non-blocking:
-- Occurs when files are added to the helper
-- Runs in a background thread to avoid blocking main operations
-- File is immediately added with "Generating description..." placeholder
-- Description is updated asynchronously once generation completes
+Description generation is designed to be non-blocking and occurs in two scenarios:
+
+1. **When files are added to the helper** (`add_file_to_global_helper`):
+   - Runs in a background thread to avoid blocking main operations
+   - File is immediately added with "Generating description..." placeholder
+   - Description is updated asynchronously once generation completes
+
+2. **When the global helper JSON is loaded** (NEW):
+   - Automatically triggered when `FileSystemManager` initializes or reloads
+   - Scans all entries for missing or empty descriptions
+   - Generates descriptions for files with:
+     - Empty descriptions (`""`)
+     - Placeholder descriptions (`"No description available"`, `"Generating description..."`, `"Error generating description"`)
+   - Runs entirely in background threads without blocking application startup
+   - Requires LLM to be set via `set_llm_summarizer()` method
+
+**Error Handling**:
 - Falls back to "No description available" if LLM is unavailable
-- Errors are logged but don't prevent file tracking
+- Falls back to error messages if file cannot be read
+- Errors are logged but don't prevent file tracking or application startup
+
+**Logging**:
+- All async operations are logged at INFO level for monitoring
+- Includes start, completion, and error messages for each file
 
 ## Configuration
 
@@ -230,7 +247,8 @@ except Exception as e:
 
 ## Best Practices
 
-1. **Always provide LLM for description generation** when adding files interactively
+1. **Set LLM summarizer early**: Call `FILESYSTEM_MANAGER.set_llm_summarizer(llm)` as soon as the LLM is initialized to enable automatic description updates
+2. **Always provide LLM for description generation** when adding files interactively
 2. **Use meaningful origin tags** to track file sources
 3. **Update descriptions periodically** if file content changes significantly
 4. **Clean up stale entries** by checking file existence before operations
@@ -256,7 +274,10 @@ Potential improvements for future releases:
 
 ### Issue: Descriptions showing "No description available"
 
-**Solution**: Ensure LLM is initialized and passed to `add_file_to_global_helper()`
+**Solution**: 
+1. Ensure LLM is initialized and set via `set_llm_summarizer()` or passed to `add_file_to_global_helper()`
+2. Wait a few seconds for async description generation to complete
+3. Check logs for errors during description generation
 
 ### Issue: Global helper context too large
 
@@ -264,11 +285,24 @@ Potential improvements for future releases:
 
 ### Issue: Descriptions are outdated
 
-**Solution**: Re-add files with `update_existing=True` to regenerate descriptions
+**Solution**: 
+1. Delete the entry and re-add the file to trigger fresh description generation
+2. Manually update descriptions by setting them to empty and triggering `_trigger_async_description_update()`
 
 ## API Reference
 
 ### FileSystemManager Methods
+
+#### `set_llm_summarizer(llm_summarizer)`
+Sets the LLM model for async description generation.
+
+**Parameters:**
+- `llm_summarizer` (BaseChatModel, optional): LLM for description generation. Pass `None` to disable async updates.
+
+**Returns:** `self` for method chaining
+
+**Description:** 
+This method should be called after the LLM is initialized to enable automatic description updates for files with missing descriptions. When set, it immediately triggers an async scan of the global helper to update any files with missing descriptions.
 
 #### `add_file_to_global_helper(file_path, description="", origin="user_upload", llm_summarizer=None)`
 Adds a file to the global helper catalog.
@@ -298,7 +332,18 @@ Gets the global file helper as a formatted string for agent context.
 
 ## Example Workflows
 
-### Workflow 1: User Uploads File
+### Workflow 1: Application Startup with Missing Descriptions
+
+1. Application starts and initializes `FileSystemManager`
+2. `_initialize_global_helper()` loads `global_file_helper.json`
+3. Some entries have empty or placeholder descriptions
+4. Agent initializes and calls `FILESYSTEM_MANAGER.set_llm_summarizer(llm)`
+5. Async scan triggers for files with missing descriptions
+6. Background threads generate descriptions without blocking startup
+7. Descriptions are persisted to JSON as they complete
+8. Agent receives updated descriptions in subsequent queries
+
+### Workflow 2: User Uploads File
 
 1. User uploads `report.pdf` through UI
 2. `save_to_memory_files()` saves file to `memory_files/`
@@ -308,7 +353,7 @@ Gets the global file helper as a formatted string for agent context.
 6. File context set with description
 7. Agent receives enhanced context in next query
 
-### Workflow 2: Agent Queries About Files
+### Workflow 3: Agent Queries About Files
 
 1. User asks: "What files do I have uploaded?"
 2. Agent receives global helper context automatically
@@ -316,7 +361,7 @@ Gets the global file helper as a formatted string for agent context.
 4. Descriptions help user understand file purposes
 5. User can request specific file content using tools
 
-### Workflow 3: Batch File Processing
+### Workflow 4: Batch File Processing
 
 ```python
 import os
