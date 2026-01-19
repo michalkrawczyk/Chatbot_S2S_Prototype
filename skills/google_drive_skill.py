@@ -152,10 +152,16 @@ class GoogleDriveSkill(BaseSkill):
                     params = GoogleFileInput(**params)
                 
                 # Determine if the URL is for a Google Sheet
-                is_sheet = (
-                    "spreadsheets" in params.file_url or 
-                    "sheets.google.com" in params.file_url
-                )
+                # Security: Use precise domain and path validation to prevent URL injection
+                # Reference: Claude Skills Methodology - Input Validation
+                # https://code.claude.com/docs/en/skills#security
+                from urllib.parse import urlparse
+                parsed_url = urlparse(params.file_url)
+                
+                # Check for Google Sheets domains and path patterns
+                is_google_sheets_domain = parsed_url.netloc == "sheets.google.com" or parsed_url.netloc == "docs.google.com"
+                has_spreadsheet_path = parsed_url.path.startswith("/spreadsheets/")
+                is_sheet = is_google_sheets_domain and has_spreadsheet_path
                 
                 if is_sheet:
                     # Export Google Sheet as CSV
