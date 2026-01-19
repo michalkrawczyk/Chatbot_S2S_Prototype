@@ -219,7 +219,12 @@ def download_google_file(params: GoogleFileInput) -> str:
 #         return f"Error generating description: {str(e)}"
 
 
-# # Define the tools list for LangChain
+# Legacy tool definitions - DEPRECATED: Use skills-based architecture instead
+# Reference: See skills/ directory for modular skill-based approach
+# https://code.claude.com/docs/en/skills
+#
+# These definitions are maintained for backward compatibility but should be
+# migrated to use the SkillRegistry for dynamic skill discovery.
 DEFINED_TOOLS = [
     get_file_list,
     get_file_content,

@@ -10,9 +10,17 @@ from langgraph.graph import END, START, StateGraph
 from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
 from general.logs import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
+from openai_client import SUPPORT_LANGUAGES
+
+# Skills-based architecture imports
+# Reference: Claude Skills Methodology for modular agent design
+# https://code.claude.com/docs/en/skills
+from skills import get_registry
+from skills.file_management_skill import FileManagementSkill
+
+# Legacy imports for backward compatibility
 from tools import DEFINED_TOOLS_DICT, DEFINED_TOOLS
 from tools.tool_register import FILESYSTEM_MANAGER
-from openai_client import SUPPORT_LANGUAGES
 
 
 # Define agent components
@@ -36,14 +44,58 @@ def should_continue_tools(
     return end_state
 
 
-def create_main_agent(llm, target_language="eng", summary_llm=None):
-    """Create an agent with the specified model."""
+def create_main_agent(llm, target_language="eng", summary_llm=None, use_skills=True):
+    """
+    Create an agent with the specified model.
+    
+    This function supports both legacy tool-based and modern skills-based architecture.
+    The skills-based approach enables dynamic capability composition and better
+    modularity.
+    
+    Args:
+        llm: Language model to use
+        target_language: Target language for summaries
+        summary_llm: Optional separate LLM for summaries
+        use_skills: If True, uses skills-based architecture; if False, uses legacy tools
+        
+    Reference: Claude Skills Methodology for agent orchestration
+    https://code.claude.com/docs/en/skills#orchestration
+    """
 
     # Define the system prompt
     system_prompt = main_system_prompt()
     summary_llm = summary_llm or llm
 
     summary_llm_prompt = summary_prompt(target_language)
+    
+    # Determine which tools to use based on architecture mode
+    # Reference: Claude Skills Methodology - Dynamic Skill Discovery
+    # https://code.claude.com/docs/en/skills#discovery
+    if use_skills:
+        # Use skills-based architecture
+        registry = get_registry()
+        
+        # Discover and register all skills if not already done
+        if len(registry) == 0:
+            logger.info("Discovering and registering skills...")
+            discovered = registry.discover_skills("skills")
+            logger.info(f"Discovered {discovered} skill(s)")
+        
+        # Get tools from all registered skills
+        tools_dict = registry.get_tools_dict()
+        tools_list = registry.get_all_tools()
+        
+        # Get filesystem manager from file management skill
+        file_skill = registry.get_skill("file_management")
+        filesystem_manager = file_skill.filesystem_manager if file_skill else FILESYSTEM_MANAGER
+        
+        logger.info(f"Agent using skills-based architecture with {len(tools_list)} tools from {len(registry)} skill(s)")
+    else:
+        # Use legacy tools for backward compatibility
+        tools_dict = DEFINED_TOOLS_DICT
+        tools_list = DEFINED_TOOLS
+        filesystem_manager = FILESYSTEM_MANAGER
+        logger.info(f"Agent using legacy tool architecture with {len(tools_list)} tools")
 
     # Function to create messages for the agent
     def create_messages(state):
@@ -51,7 +103,7 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
         
         # Always include the global file helper catalog in the agent's context
         # Note: If the catalog grows large, this could increase token usage significantly
-        global_helper_context = FILESYSTEM_MANAGER.get_global_helper_as_context()
+        global_helper_context = filesystem_manager.get_global_helper_as_context()
         if global_helper_context and global_helper_context != "No files in global helper catalog.":
             helper_message = HumanMessage(
                 content=f"{global_helper_context}\n"
@@ -133,9 +185,11 @@ def create_main_agent(llm, target_language="eng", summary_llm=None):
                     pass
 
             # Execute the tool
+            # Reference: Claude Skills Methodology - Robust Error Handling
+            # https://code.claude.com/docs/en/skills#error-handling
             result_content = ""
-            if tool_name in DEFINED_TOOLS_DICT:
-                tool = DEFINED_TOOLS_DICT[tool_name]
+            if tool_name in tools_dict:
+                tool = tools_dict[tool_name]
                 try:
                     # Call the tool with the appropriate arguments
                     if hasattr(tool, "func"):
@@ -234,9 +288,20 @@ class AgentLLM:
     _llm_with_tools = None
     _context = ""
     _summary_language = "eng"
+    _use_skills = True  # Flag to enable skills-based architecture
 
-    def initialize_agent(self, api_key, model_name="gpt-4.1-mini"):
-        """Initialize the agent with the provided API key."""
+    def initialize_agent(self, api_key, model_name="gpt-4.1-mini", use_skills=True):
+        """
+        Initialize the agent with the provided API key.
+        
+        Args:
+            api_key: OpenAI API key
+            model_name: Model to use for the agent
+            use_skills: If True, uses skills-based architecture; if False, uses legacy tools
+            
+        Reference: Claude Skills Methodology - Agent Initialization
+        https://code.claude.com/docs/en/skills#initialization
+        """
         if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"]:
             logger.warning(f"Unsupported model name: {model_name}.")
             # TODO: Add later support for other models
@@ -249,18 +314,36 @@ class AgentLLM:
                 if model_name not in ["o3-mini", "gpt-5-mini"]
                 else ChatOpenAI(model=model_name)
             )
+            
+            # Store skills preference
+            self._use_skills = use_skills
+            
+            # Get tools based on architecture mode
+            # Reference: Claude Skills Methodology - Dynamic Tool Binding
+            # https://code.claude.com/docs/en/skills#tool-binding
+            if use_skills:
+                registry = get_registry()
+                if len(registry) == 0:
+                    registry.discover_skills("skills")
+                tools = registry.get_all_tools()
+                logger.info(f"Binding {len(tools)} tools from {len(registry)} skill(s)")
+            else:
+                tools = DEFINED_TOOLS
+                logger.info(f"Binding {len(tools)} legacy tools")
 
-            self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOLS)
+            self._llm_with_tools = self._llm.bind_tools(tools)
             # TODO: Check if work correctly with other chats after implementing them
             # TODO: node with tools should be inside main agent?
             self._agent_executor = create_main_agent(
                 llm=self._llm_with_tools,
                 target_language=self._summary_language,
                 summary_llm=self._llm,
+                use_skills=use_skills,
             )
             self._model_name = model_name
+            architecture = "skills-based" if use_skills else "legacy"
             logger.info(
-                f"Main Agent created with model: {model_name}, language: {self._summary_language}"
+                f"Main Agent created with model: {model_name}, language: {self._summary_language}, architecture: {architecture}"
             )
             return True
         return False
@@ -389,5 +472,6 @@ class AgentLLM:
                 llm=self._llm_with_tools,
                 target_language=self._summary_language,
                 summary_llm=self._llm,
+                use_skills=self._use_skills,
             )
             logger.info(f"Agent executor updated with new summary language: {language}")

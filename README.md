@@ -12,10 +12,11 @@ short_description: T
 
 # Voice Recorder & AI Analysis
 
-A Speech-to-Speech chatbot prototype with multiple Speech-to-Text (STT) backend options and AI-powered analysis.
+A Speech-to-Speech chatbot prototype with multiple Speech-to-Text (STT) backend options, AI-powered analysis, and a **modular skills-based architecture**.
 
 ## Features
 
+- **Modular Skills Architecture**: Extensible, composable agent capabilities using a skills-based design
 - **Multiple STT Engines**: Switch between OpenAI Whisper and NVIDIA Nemo for speech-to-text transcription
 - **Voice Recording**: Record audio directly from your microphone
 - **Audio Upload**: Upload audio files in various formats (WAV, MP3, M4A, FLAC)
@@ -24,6 +25,21 @@ A Speech-to-Speech chatbot prototype with multiple Speech-to-Text (STT) backend 
 - **Audio Output Control**: Enable or disable all audio output via a convenient checkbox
 - **Multi-language Support**: Automatic language detection or manual selection
 - **Session Memory**: Track conversation history and context
+
+## Architecture
+
+### Skills-Based Design
+
+The agent uses a modular skills architecture for extensibility and maintainability:
+
+- **Skills**: Isolated, reusable capability modules
+- **Dynamic Discovery**: Automatic skill registration and discovery
+- **Composable**: Skills can be combined and extended at runtime
+- **Well-Documented**: Each skill includes YAML metadata and usage examples
+
+See [SKILLS_GUIDE.md](SKILLS_GUIDE.md) for detailed information on the skills architecture.
+
+**Reference**: [Claude Skills Methodology](https://code.claude.com/docs/en/skills)
 
 ## Speech-to-Text Models
 
