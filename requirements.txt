@@ -5,6 +5,7 @@ langchain-community==0.3.19
 langchain-core==0.3.41
 langchain-experimental==0.3.4
 langchain-openai==0.3.7
+langchain-ollama
 pyaudio
 pydantic
 #pydantic==2.11.*
