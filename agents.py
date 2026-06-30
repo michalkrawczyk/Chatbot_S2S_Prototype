@@ -4,10 +4,11 @@ import langgraph.graph as lg
 from typing import TypedDict, List, Dict, Any, Literal, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 
 
-from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE
+from general.config import RECURSION_LIMIT, AGENT_TRACE, AGENT_VERBOSE, OPENAI_MODELS, OLLAMA_MODELS
 from general.logs import logger, conditional_logger_info
 from prompt_texts import summary_prompt, main_system_prompt
 from tools import DEFINED_TOOLS_DICT, DEFINED_TOOLS
@@ -236,39 +237,40 @@ class AgentLLM:
     _summary_language = "eng"
 
     def initialize_agent(self, api_key, model_name="gpt-4.1-mini"):
-        """Initialize the agent with the provided API key."""
-        if model_name not in ["o3-mini", "gpt-4-turbo", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"]:
-            logger.warning(f"Unsupported model name: {model_name}.")
-            # TODO: Add later support for other models
-            return False
-
-        if api_key:
+        """Initialize the agent with the given model."""
+        if model_name in OPENAI_MODELS:
+            if not api_key:
+                return False
             os.environ["OPENAI_API_KEY"] = api_key
             self._llm = (
                 ChatOpenAI(model=model_name, temperature=0.0)
                 if model_name not in ["o3-mini", "gpt-5-mini"]
                 else ChatOpenAI(model=model_name)
             )
+        elif model_name in OLLAMA_MODELS:
+            # Runs GGUF via llama.cpp under the hood — no API key required
+            self._llm = ChatOllama(model=model_name, temperature=0.0)
+        else:
+            logger.warning(f"Unsupported model name: {model_name}.")
+            return False
 
-            self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOLS)
-            # TODO: Check if work correctly with other chats after implementing them
-            # TODO: node with tools should be inside main agent?
-            self._agent_executor = create_main_agent(
-                llm=self._llm_with_tools,
-                target_language=self._summary_language,
-                summary_llm=self._llm,
-            )
-            self._model_name = model_name
-            logger.info(
-                f"Main Agent created with model: {model_name}, language: {self._summary_language}"
-            )
-            return True
-        return False
+        self._llm_with_tools = self._llm.bind_tools(DEFINED_TOOLS)
+        # TODO: node with tools should be inside main agent?
+        self._agent_executor = create_main_agent(
+            llm=self._llm_with_tools,
+            target_language=self._summary_language,
+            summary_llm=self._llm,
+        )
+        self._model_name = model_name
+        logger.info(
+            f"Main Agent created with model: {model_name}, language: {self._summary_language}"
+        )
+        return True
 
     def run_agent_on_text(self, text, memory, return_thinking=False):
         """Run the agent on the provided text."""
         if not self._agent_executor:
-            return "Agent not initialized. Please provide a valid OpenAI API key."
+            return "Agent not initialized. Please select a model and connect first."
 
         if not text:
             return "No text provided for analysis."

@@ -15,6 +15,8 @@ from general.config import (
     DEFAULT_STT_MODEL,
     FILE_MEMORY_DIR,
     KEEP_LAST_UPLOADED_FILE_IN_CONTEXT,
+    OLLAMA_MODELS,
+    OPENAI_MODELS,
     SUPPORTED_FILETYPES,
     SUPPORTED_STT_MODELS,
 )
@@ -582,10 +584,10 @@ def create_interface():
 
                     # Agent model selector
                     agent_model_selector = gr.Dropdown(
-                        choices=["o3-mini", "gpt-4-turbo", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"],
-                        value="gpt-4.1-mini",  # Fixed to use a valid default value
+                        choices=OPENAI_MODELS + OLLAMA_MODELS,
+                        value="gpt-4.1-mini",
                         label="Agent Model",
-                        info="Select the model for the AI agent",
+                        info="OpenAI models require an API key. LFM 2.5 models run locally via Ollama (no key needed).",
                     )
                     agent_status = gr.Markdown("Agent Status: Not initialized")
 
@@ -996,6 +998,13 @@ def create_interface():
 
         # Auto-initialize agent when model is selected
         def on_model_change(model, api_key):
+            if model in OLLAMA_MODELS:
+                success = transcriber.initialize_agent_ui(None, model)
+                if success:
+                    conditional_logger_info(f"Agent initialized with Ollama model: {model}")
+                    return f"Agent Status: ✓ Initialized with {model} (local Ollama)"
+                return "Agent Status: ❌ Initialization failed — is Ollama running?"
+
             if not api_key:
                 return "Agent Status: ⚠️ No API key provided"
 
