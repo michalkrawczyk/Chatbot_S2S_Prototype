@@ -65,16 +65,15 @@ def get_full_dataframe_string_tool(params: Union[DatasheetLoadParams, Dict]) -> 
     """
     Returns the *entire* loaded dataframe as a string.
     WARNING: This can produce very large output for large datasheets, potentially exceeding token limits.
-    Use 'get_datasheet_chunk' or 'calculate_statistics_tool' for summaries when possible.
+    Use chunked or statistics tools for summaries when possible.
     Returns an error message if no data is loaded.
     """
     if isinstance(params, dict):
         params = DatasheetLoadParams(**params)
 
-    if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
-        _read_datasheet(params.file_path, params.sheet_name)
-
     try:
+        if params.file_path and DATASHEET_MANAGER.df_filepath != params.file_path:
+            _read_datasheet(params.file_path, params.sheet_name)
         return DATASHEET_MANAGER.df_as_str()
     except Exception as e:
         logger.error(
