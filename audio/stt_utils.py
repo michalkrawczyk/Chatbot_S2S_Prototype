@@ -161,6 +161,8 @@ class CircuitBreaker:
     
     def record_success(self):
         """Record a success and reset circuit breaker"""
+        if self._circuit_open_until > time.time():
+            return  # still in open window; ignore success
         self._consecutive_failures = 0
         self._circuit_open_until = 0
     
